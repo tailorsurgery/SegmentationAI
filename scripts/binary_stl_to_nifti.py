@@ -1,4 +1,4 @@
-import numpy as np
+'''import numpy as np
 import nibabel as nib
 from stl import mesh
 import os
@@ -127,4 +127,73 @@ for i in range(1,2):
     except Exception as e:
         print(f"Error processing case {case}: {e}")
         continue
-    case+=1
+    case+=1'''
+
+import os
+import numpy as np
+import nibabel as nib
+from stl import mesh
+import matplotlib.pyplot as plt
+
+def load_stl_as_volume(stl_file_path, target_shape):
+    """Load a binary STL file and return it as a 3D NumPy array."""
+    # Load the STL file
+    model = mesh.Mesh.from_file(stl_file_path)
+
+    # Create a volume to store the model
+    volume = np.zeros(target_shape, dtype=np.uint8)
+
+    # Set up voxel size
+    voxel_size = (1, 1, 1)  # You can adjust this to change the size of the volume
+    
+    # Iterate over the faces of the mesh and fill the volume
+    for face in model.vectors:
+        # Get the vertices of the face
+        for vertex in face:
+            # Calculate voxel indices based on vertex coordinates
+            x, y, z = (vertex / voxel_size).astype(int)
+
+            # Ensure we are within the bounds of the volume
+            if 0 <= x < target_shape[0] and 0 <= y < target_shape[1] and 0 <= z < target_shape[2]:
+                volume[x, y, z] = 1  # Mark the voxel as occupied
+
+    return volume
+
+def save_volume_as_nifti(volume, output_file_path):
+    """Save the 3D volume as a NIfTI file."""
+    nifti_img = nib.Nifti1Image(volume, np.eye(4))
+    nib.save(nifti_img, output_file_path)
+    print(f'Successfully saved NIfTI file to: {output_file_path}')
+
+def main(case):
+    # Define the directory containing STL files
+    stl_directory = f'./../TS_DATASET/dataset/binary_stl/{case}'  # Update this path as needed
+    output_nifti_file = f'./../TS_DATASET/dataset/masks/{case}_masks.nii'
+    
+    # Define the target shape of the volume (adjust according to your needs)
+    target_shape = (100, 100, 100)  # Example shape, change as necessary
+
+    # Create a combined volume
+    combined_volume = np.zeros(target_shape, dtype=np.uint8)
+
+    # Load each STL file from the directory
+    for file_name in os.listdir(stl_directory):
+        if file_name.endswith('.stl'):
+            file_path = os.path.join(stl_directory, file_name)
+            print(f'Processing {file_path}...')
+            volume = load_stl_as_volume(file_path, target_shape)
+            combined_volume += volume  # Combine volumes
+
+    # Save the combined volume as a NIfTI file
+    save_volume_as_nifti(combined_volume, output_nifti_file)
+
+    # Visualize the middle slice
+    middle_slice_index = combined_volume.shape[0] // 2
+    plt.imshow(combined_volume[middle_slice_index, :, :], cmap='gray')
+    plt.title(f'Middle Slice (Index {middle_slice_index})')
+    plt.axis('off')
+    plt.show()
+
+if __name__ == '__main__':
+    case = 240056
+    main(case)
