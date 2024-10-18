@@ -54,6 +54,6 @@ def check_nii_file(case, option):
         print(f"Unique values in the image data (sample): {unique_values[:10]}")
 
 # Call the function for case '240044' and 'images'
-check_nii_file('240008', 'image')
+
 # Optional: Pause the script to ensure plot stays on screen for a bit
 time.sleep(5)
