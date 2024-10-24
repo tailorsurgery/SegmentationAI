@@ -1,66 +1,62 @@
 import os
 import numpy as np
-import pydicom
+import nibabel as nib
 import cv2
 import matplotlib.pyplot as plt
-### FIRST RESIZE IMAGES SO THEY HAVE THE SAME SHAPE (512, 512) SOME OF THEM HAD (512x858)###
-def load_dicom_images(dicom_directory, target_shape=(512, 512)):
-    """Load DICOM images from the specified directory and resize them to the target shape."""
-    dicom_files = [f for f in os.listdir(dicom_directory) if f.endswith('.dcm')]
-    dicom_files.sort()  # Sort files to maintain order
 
-    original_slices = []
+def load_nifti_image(nifti_file_path, target_shape=(512, 512)):
+    """Load NIfTI image from the specified path and resize each slice to the target shape."""
+    nifti_image = nib.load(nifti_file_path)
+    
+    # Get the data from the NIfTI file as a numpy array
+    original_volume = nifti_image.get_fdata()
+
+    # Initialize list to store resized slices
     resized_slices = []
 
-    for file in dicom_files:
-        file_path = os.path.join(dicom_directory, file)
-        dicom_slice = pydicom.dcmread(file_path)
-        
-        # Read pixel array
-        pixel_array = dicom_slice.pixel_array
-        
-        # Check if the slice is 3D (e.g., RGB) and convert to grayscale if necessary
-        if pixel_array.ndim == 3:  # If it has more than 2 dimensions
-            pixel_array = cv2.cvtColor(pixel_array, cv2.COLOR_RGB2GRAY)
+    # Resize each slice to the target shape
+    for slice_index in range(original_volume.shape[-1]):
+        slice_2d = original_volume[:, :, slice_index]
 
         # Resize the original slice to the target shape
-        resized_slice = cv2.resize(pixel_array, target_shape[::-1], interpolation=cv2.INTER_LINEAR)
-        
-        # Store the original slice and resized slice
-        original_slices.append(pixel_array)
+        resized_slice = cv2.resize(slice_2d, target_shape[::-1], interpolation=cv2.INTER_LINEAR)
         resized_slices.append(resized_slice)
 
-    # Stack the slices into 3D volumes
-    # Resize all original slices to the target shape before stacking
-    original_volume = np.stack([cv2.resize(slice_, target_shape[::-1], interpolation=cv2.INTER_LINEAR) for slice_ in original_slices], axis=-1)
+    # Stack resized slices to create a 3D volume
     resized_volume = np.stack(resized_slices, axis=-1)
-    
+
     return original_volume, resized_volume
 
-def get_dicom_dimensions(dicom_directory):
-    """Extract number of rows, columns, and slices from DICOM files in the specified directory."""
-    dicom_files = [f for f in os.listdir(dicom_directory) if f.endswith('.dcm')]
-    dicom_files.sort()  # Sort files to maintain order
+def get_nifti_dimensions(nifti_file_path):
+    """Extract dimensions of the NIfTI file."""
+    nifti_image = nib.load(nifti_file_path)
+    nifti_data = nifti_image.get_fdata()
 
-    num_slices = len(dicom_files)
-    rows, columns = 0, 0
-
-    for file in dicom_files:
-        file_path = os.path.join(dicom_directory, file)
-        dicom_slice = pydicom.dcmread(file_path)
-
-        # Extract dimensions
-        if 'Rows' in dicom_slice and 'Columns' in dicom_slice:
-            rows = dicom_slice.Rows
-            columns = dicom_slice.Columns
+    num_slices = nifti_data.shape[-1]
+    rows, columns = nifti_data.shape[0], nifti_data.shape[1]
 
     print(f'Total slices: {num_slices}, Original Rows: {rows}, Original Columns: {columns}')
     return rows, columns, num_slices
 
+def normalize_image(image):
+    # Normalize pixel values between 0 and 255
+    image_min = np.min(image)
+    image_max = np.max(image)
+    if image_max > image_min:
+        image_normalized = (image - image_min) / (image_max - image_min) * 255
+    else:
+        image_normalized = np.zeros_like(image)
+    return image_normalized.astype(np.uint8)
+
+
+
+
+
 def view_slices(original_volume, resized_volume, slice_index):
     """Display the original and resized slices side by side."""
-    original_slice = original_volume[:, :, slice_index]
-    resized_slice = resized_volume[:, :, slice_index]
+    # Apply normalization before displaying
+    original_slice = normalize_image(original_volume[:, :, slice_index])
+    resized_slice = normalize_image(resized_volume[:, :, slice_index])
 
     plt.figure(figsize=(12, 6))
 
@@ -81,15 +77,26 @@ def view_slices(original_volume, resized_volume, slice_index):
 
 # Example usage
 case = '240002'
-dicom_directory = f'./../TS_DATASET/dataset/dicom/{case}'  # DICOM directory
+nifti_file_path = f'./temp_nifti/{case}_images.nii'  # NIfTI file path
 target_shape = (512, 512)  # Target dimensions for resizing
+from nilearn import plotting
+import nibabel as nib
+
+# Load your NIfTI file
+nifti_img = nib.load(nifti_file_path)
+
+# Display the image with an interactive web-based viewer
+viewer = plotting.view_img(nifti_img)
+viewer.open_in_browser()  # This opens the viewer in your default web browser
 
 # Get original dimensions
-original_rows, original_columns, num_slices = get_dicom_dimensions(dicom_directory)
+original_rows, original_columns, num_slices = get_nifti_dimensions(nifti_file_path)
 
-# Load DICOM images and resize them
-original_volume, resized_volume = load_dicom_images(dicom_directory, target_shape)
+# Load NIfTI image and resize it
+original_volume, resized_volume = load_nifti_image(nifti_file_path, target_shape)
 
 # View a specific slice
-#slice_index = 0  # Change this index to view different slices
-#view_slices(original_volume, resized_volume, slice_index)
+slice_index = 50  # Change this index to view different slices
+view_slices(original_volume, resized_volume, slice_index)
+
+

@@ -57,3 +57,43 @@ def check_nii_file(case, option):
 
 # Optional: Pause the script to ensure plot stays on screen for a bit
 time.sleep(5)
+
+
+'''import pydicom
+import os
+import time
+def print_dicom_info(file_path):
+    try:
+        dicom = pydicom.dcmread(file_path)
+        print(f'DICOM file: {file_path}')
+        print(f'Study Instance UID: {dicom.StudyInstanceUID}')
+        print(f'Series Instance UID: {dicom.SeriesInstanceUID}')
+        print(f'Patient ID: {dicom.PatientID}')
+        print(f'Patient Name: {dicom.PatientName}')
+        print(f'Study Description: {dicom.StudyDescription}')
+        print(f'Series Description: {dicom.SeriesDescription}')
+        print(f'Instance Number: {dicom.InstanceNumber}')
+        print(f'Samples Per Pixel: {dicom.SamplesPerPixel}')
+        print(f'Photometric Interpretation: {dicom.PhotometricInterpretation}')
+        print(f'Pixel Data: {dicom.PixelData is not None}')
+        print('-' * 40)
+    except Exception as e:
+        print(f'Error reading {file_path}: {e}')
+def is_dicom_file(file_path):
+    try:
+        pydicom.dcmread(file_path, force=True)  # Use force=True to read non-standard DICOM files
+        return True
+    except (pydicom.errors.InvalidDicomError, FileNotFoundError):
+        return False
+# Function to print DICOM info for all files in a folder
+def print_dicom_folder_info(folder_path):
+    for filename in os.listdir(folder_path):
+        file_path = os.path.join(folder_path, filename)
+        if is_dicom_file(file_path):
+            print_dicom_info(file_path)
+            time.sleep(5)
+
+# Example usage
+folder_path = './240084'  # Change this to your DICOM folder path
+print_dicom_folder_info(folder_path)
+'''
