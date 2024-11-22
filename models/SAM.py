@@ -5,10 +5,17 @@ from torch.optim import Adam
 from torch.nn import CrossEntropyLoss
 import nrrd
 from torchvision.transforms import Compose, Resize, ToTensor
+import sys
+#sys.path.append("/Users/samyakarzazielbachiri/Documents/SegmentationAI/models/sam2/")
 from sam2.sam2_image_predictor import SAM2ImagePredictor
-from sam2.build_sam import (build_sam2)
+from sam2.build_sam import build_sam2
+from hydra import initialize_config_dir, compose
+from hydra.core.global_hydra import GlobalHydra
 
 
+from hydra.core.config_store import ConfigStore
+
+print(f"Hydra search path: {ConfigStore.instance().repo}")
 
 # Dataset class for loading images and masks
 class BoneSegmentationDataset(Dataset):
@@ -38,41 +45,30 @@ class BoneSegmentationDataset(Dataset):
 
         return image, mask
 
-
-from hydra import initialize_config_dir, compose
-from hydra.core.global_hydra import GlobalHydra
-
 def load_sam2_model(config_path, checkpoint_path):
     """
     Load SAM 2 model using the provided configuration and checkpoint.
-
-    Args:
-        config_path (str): Full path to the configuration YAML file.
-        checkpoint_path (str): Path to the SAM 2 checkpoint.
-
-    Returns:
-        SAM2ImagePredictor: The SAM 2 model with the image predictor interface.
     """
-    # Extract the directory and config name
     config_dir = os.path.dirname(config_path)
     config_name = os.path.basename(config_path)
 
     # Clear any previous Hydra initialization
+    from hydra.core.global_hydra import GlobalHydra
     if GlobalHydra.instance().is_initialized():
         GlobalHydra.instance().clear()
 
     # Initialize Hydra with the config directory
+    from hydra import initialize_config_dir, compose
     with initialize_config_dir(config_dir=config_dir, version_base=None):
         cfg = compose(config_name=config_name)
 
     print(f"Configuration Loaded: {cfg}")
+    # Pass the cfg dictionary directly to build_sam2
     model = build_sam2(cfg, checkpoint_path)
     return SAM2ImagePredictor(model)
 
-
-
-# Training Loop
-def train_model(model, dataloader, optimizer, criterion, device, epochs=10):
+# Training Loop for Fine-Tuning
+def finetune_model(model, dataloader, optimizer, criterion, device, epochs=10):
     model.model.train()  # Set the model to training mode
     for epoch in range(epochs):
         total_loss = 0
@@ -91,22 +87,21 @@ def train_model(model, dataloader, optimizer, criterion, device, epochs=10):
 
         print(f"Epoch {epoch + 1}, Loss: {total_loss / len(dataloader):.4f}")
 
+    # Save the fine-tuned model
+    torch.save(model.model.state_dict(), "finetuned_sam2.pth")
+    print("Fine-tuned model saved as 'finetuned_sam2.pth'")
 
 # Main Function
 def main():
-    # Get current working directory
     path = "/Users/samyakarzazielbachiri/Documents/SegmentationAI/"
     print(f"Current working directory: {path}")
-    # Local directories for saving the data
     image_dir = os.path.join(path, "data/segmentai_dataset/images")
     mask_dir = os.path.join(path, "data/segmentai_dataset/masks")
 
-    # SAM 2 Configuration and Checkpoints
-    config_path = os.path.join(path, "models/segment-anything-2/sam2/configs/sam2.1/sam2.1_hiera_l.yaml")
+    config_path = os.path.join(path, "models/sam2/sam2/configs/sam2.1/sam2.1_hiera_l.yaml")
     print(f"Config path: {config_path}")
-    checkpoint_path = os.path.join(path, "models/segment-anything-2/checkpoints/sam2.1_hiera_large.pt")
+    checkpoint_path = os.path.join(path, "models/sam2/checkpoints/sam2.1_hiera_large.pt")
 
-    # Hyperparameters
     batch_size = 4
     learning_rate = 0.001
     epochs = 10
@@ -121,13 +116,17 @@ def main():
     predictor = load_sam2_model(config_path, checkpoint_path)
     predictor.model.to(device)
 
+    # Freeze specific layers (optional)
+    for name, param in predictor.model.named_parameters():
+        if "image_encoder" in name:  # Freeze image encoder layers
+            param.requires_grad = False
+
     # Loss and optimizer
     criterion = CrossEntropyLoss()
-    optimizer = Adam(predictor.model.parameters(), lr=learning_rate)
+    optimizer = Adam(filter(lambda p: p.requires_grad, predictor.model.parameters()), lr=learning_rate)
 
-    # Train the model
-    train_model(predictor, dataloader, optimizer, criterion, device, epochs)
-
+    # Fine-tune the model
+    finetune_model(predictor, dataloader, optimizer, criterion, device, epochs)
 
 if __name__ == "__main__":
     main()

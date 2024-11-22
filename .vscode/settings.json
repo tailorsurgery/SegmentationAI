@@ -1,0 +1,6 @@
+{
+    "python.analysis.extraPaths": [
+        "./models/segment-anything-2",
+        "./models/sam2"
+    ]
+}
