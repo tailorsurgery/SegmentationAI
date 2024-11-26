@@ -3,7 +3,7 @@ import numpy as np
 import nibabel as nib
 import pydicom
 import time
-from check import check_nii_file
+from utils.check import check_nii_file
 
 def is_dicom_file(file_path):
     try:
