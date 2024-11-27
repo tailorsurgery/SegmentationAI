@@ -94,7 +94,7 @@ def viewer_with_orientations(image_array, aligned_masks_array, mask_paths, image
     viewer_3d.add_image(image_array, name="3D Image", colormap="gray", scale=image_spacing, rendering="mip")
     for i, mask in enumerate(aligned_masks_array):
         viewer_3d.add_labels(mask, name=f"3D Mask {os.path.basename(mask_paths[i])}", scale=image_spacing, opacity=0.5)
-'''
+    '''
     # Set 3D display mode for the 3D view
     '''viewer_3d.dims.ndisplay = 3'''
 
