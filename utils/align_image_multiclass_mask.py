@@ -85,14 +85,15 @@ def viewer_with_colored_classes(image_array, multiclass_mask, image_spacing):
     # Run Napari viewers
     napari.run()
 
-# Paths to image and masks
-case = '240042-2'  # Update for each case
-image_path = f'/Users/samyakarzazielbachiri/Documents/SegmentationAI/data/segmentai_dataset/images/{case}_images.nrrd'
-mask_path = f'/Users/samyakarzazielbachiri/Documents/SegmentationAI/data/segmentai_dataset/multiclass_masks/{case}_multiclass_mask.nrrd'
+if __name__ == "__main__":
+    # Paths to image and masks
+    case = '240042-2'
+    image_path = f'/Users/samyakarzazielbachiri/Documents/SegmentationAI/data/segmentai_dataset/images/{case}_images.nrrd'
+    mask_path = f'/Users/samyakarzazielbachiri/Documents/SegmentationAI/data/segmentai_dataset/multiclass_masks/{case}_multiclass_mask.nrrd'
 
-# Load image and mask
-image_array, image_spacing = align_image(image_path)
-multiclass_mask = load_multiclass_mask(mask_path)
+    # Load image and mask
+    image_array, image_spacing = align_image(image_path)
+    multiclass_mask = load_multiclass_mask(mask_path)
 
-# Visualize with colored classes
-viewer_with_colored_classes(image_array, multiclass_mask, image_spacing)
+    # Visualize with colored classes
+    viewer_with_colored_classes(image_array, multiclass_mask, image_spacing)
