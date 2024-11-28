@@ -242,6 +242,10 @@ if __name__ == "__main__":
         print("Loading preprocessed dataset...")
         full_dataset = torch.load(dataset_dir)
     else:
+        if not os.path.exists(image_dir) or not os.path.exists(mask_dir):
+            raise FileNotFoundError("Image or mask directory not found!")
+            # TODO: Download the dataset from gcloud
+            # https://console.cloud.google.com/storage/browser/segmentai_dataset
         full_dataset = PatchBasedDataset(image_dir, mask_dir)
         torch.save(full_dataset, dataset_dir)
 
@@ -255,7 +259,7 @@ if __name__ == "__main__":
     device = torch.device("cpu")
     model = UNet3D(1, 6).to(device)
 
-    train_losses, val_losses = train_model(model, train_loader, val_loader, device)
+    train_losses, val_losses = train_model(model, train_loader, val_loader, device, epochs=1, lr=1e-3)
     torch.save(model.state_dict(), model_save_path)
     print(f"Model saved to {model_save_path}")
 
