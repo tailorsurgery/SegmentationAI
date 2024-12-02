@@ -61,8 +61,9 @@ def load_and_convert_dicom_to_nrrd(input_dir, output_dir, case_name, count):
             reader.ReadImageInformation()
 
             # Get metadata
-            series_description = reader.GetMetaData("0008|103e") if reader.HasMetaDataKey("0008|103e") else "Unknown_Series"
-            instance_number = int(reader.GetMetaData("0020|0013")) if reader.HasMetaDataKey("0020|0013") else None
+            series_description = reader.GetMetaData("0008|103e") if reader.HasMetaDataKey(
+                "0008|103e") else f"Series_{count}"
+            instance_number = int(reader.GetMetaData("0020|0013")) if reader.HasMetaDataKey("0020|0013") else count
 
             if series_description not in series_groups:
                 series_groups[series_description] = []
@@ -82,14 +83,29 @@ def load_and_convert_dicom_to_nrrd(input_dir, output_dir, case_name, count):
             reader = sitk.ImageSeriesReader()
             reader.SetFileNames(sorted_file_paths)
             image = reader.Execute()
+            print(image.GetSize())
 
-            # Apply windowing for soft tissue visualization
-            windowed_image = apply_windowing(image, window_level=40, window_width=400)
+            # Check for non-uniform slice spacing and resample if necessary
+            if image.GetSpacing()[2] == 0:
+                print("Non-uniform slice spacing detected. Attempting resampling...")
+                resampler = sitk.ResampleImageFilter()
+                desired_spacing = min(image.GetSpacing())  # Define your desired spacing here
+                new_size = [
+                    int(image.GetSize()[0] * (image.GetSpacing()[0] / desired_spacing)),
+                    int(image.GetSize()[1] * (image.GetSpacing()[1] / desired_spacing)),
+                    int(image.GetSize()[2] * (image.GetSpacing()[2] / desired_spacing)),
+                ]
+                resampler.SetOutputSpacing([image.GetSpacing()[0], image.GetSpacing()[1], desired_spacing])
+                resampler.SetSize(new_size)
+                resampler.SetOutputOrigin(image.GetOrigin())
+                resampler.SetOutputDirection(image.GetDirection())
+                resampler.SetInterpolator(sitk.sitkLinear)
+                image = resampler.Execute(image)
 
             # Save the 3D image as NRRD
             nrrd_path = os.path.join(output_dir, f"{case_name}-{count}_images.nrrd")
+            sitk.WriteImage(image, nrrd_path)
             _,_,_ = align_image(nrrd_path, flip=True)
-            #sitk.WriteImage(windowed_image, nrrd_path)
             print(f"NRRD file saved at: {nrrd_path}")
 
             count += 1

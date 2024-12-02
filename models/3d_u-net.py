@@ -1,6 +1,7 @@
 import os
 import time
 import torch
+import gc
 import numpy as np
 import SimpleITK as sitk
 import matplotlib.pyplot as plt
@@ -214,6 +215,10 @@ def train_model(model, train_loader, val_loader, device, epochs=10, lr=1e-3):
 
             running_loss += loss.item()
 
+            del images, masks, outputs
+            gc.collect()
+            torch.cuda.empty_cache()
+
         train_loss = running_loss / len(train_loader)
         train_losses.append(train_loss)
         print(f"Training Loss: {train_loss:.4f}")
@@ -227,10 +232,17 @@ def train_model(model, train_loader, val_loader, device, epochs=10, lr=1e-3):
                 loss = criterion(outputs, masks)
                 running_val_loss += loss.item()
 
+                del images, masks, outputs, loss
+                gc.collect()
+                torch.cuda.empty_cache()
+
         val_loss = running_val_loss / len(val_loader)
         val_losses.append(val_loss)
         print(f"Validation Loss: {val_loss:.4f}")
         print(f"Epoch {epoch + 1} completed in {time.time() - epoch_start:.2f} seconds.")
+        gc.collect()
+        torch.cuda.empty_cache()
+
 
     elapsed_time = time.time() - start_time
     print(f"Training completed in {elapsed_time:.2f} seconds.")
@@ -253,7 +265,7 @@ if __name__ == "__main__":
             # TODO: Download the dataset from gcloud
             # https://console.cloud.google.com/storage/browser/segmentai_dataset
         full_dataset = PatchBasedDataset(image_dir, mask_dir)
-        torch.save(full_dataset, dataset_dir)p
+        torch.save(full_dataset, dataset_dir)
 
     train_size = int(0.8 * len(full_dataset))
     val_size = len(full_dataset) - train_size

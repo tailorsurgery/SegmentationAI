@@ -9,13 +9,33 @@ def load_multiclass_mask(mask_path):
     mask = sitk.ReadImage(mask_path)
     return sitk.GetArrayFromImage(mask)
 
+
+def apply_windowing(image, window_level=40, window_width=400):
+    """
+    Apply windowing to the image using the specified window level and width.
+    """
+    min_intensity = window_level - (window_width / 2)
+    max_intensity = window_level + (window_width / 2)
+    windowed_image = sitk.IntensityWindowing(
+        image,
+        windowMinimum=min_intensity,
+        windowMaximum=max_intensity,
+        outputMinimum=0.0,
+        outputMaximum=255.0,
+    )
+    return windowed_image
+
 def align_image(image_path, flip=True):
     """
     Load the image and get its properties for visualization.
     """
-    image = sitk.ReadImage(image_path)
+    image_raw = sitk.ReadImage(image_path)
+    # Apply windowing for soft tissue visualization
+    image = apply_windowing(image_raw, window_level=40, window_width=400)
+
     image_array = sitk.GetArrayFromImage(image)
     image_spacing = image.GetSpacing()
+
     if flip:
         image_array = np.flip(image_array, axis=0)
         image = sitk.GetImageFromArray(image_array)
