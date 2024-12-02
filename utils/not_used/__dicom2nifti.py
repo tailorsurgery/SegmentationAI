@@ -73,5 +73,5 @@ def main(dicom_directory, elim_grad=False, elim_slc=False):
 
 # Example usage
 case = '240002'
-dicom_directory = f"/Users/samyakarzazielbachiri/Documents/SegmentationAI/{case}"
+dicom_directory = f"/Users/samyakarzazielbachiri/Documents/SegmentationAI/scripts/input/81409_Dra.Marian Vives_Hospital Clinic"
 main(dicom_directory)

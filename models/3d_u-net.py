@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 from torch import nn, optim
 from torch.utils.data import Dataset, DataLoader, random_split
+import random
 
 # Extract patches from the volume
 def extract_patches(volume, patch_size=(128, 128, 128), stride=(64, 64, 64)):
@@ -96,7 +97,7 @@ def predict(model, image, device):
 
 # Dataset class
 class PatchBasedDataset(Dataset):
-    def __init__(self, image_dir, mask_dir, patch_size=(128, 128, 128), stride=(64, 64, 64)):
+    def __init__(self, image_dir, mask_dir, patch_size=(128, 128, 128), stride=(64, 64, 64), num_cases=2):
         self.image_dir = image_dir
         self.mask_dir = mask_dir
         self.image_files = sorted([f for f in os.listdir(image_dir) if f.endswith('.nrrd')])
@@ -107,6 +108,11 @@ class PatchBasedDataset(Dataset):
         print(f"Found {len(self.image_files)} images and {len(self.mask_files)} masks.")
         assert len(self.image_files) == len(self.mask_files), \
             "Number of images and masks must match!"
+
+        if num_cases is not None:
+            selected_indices = random.sample(range(len(self.image_files)), min(num_cases, len(self.image_files)))
+            self.image_files = [self.image_files[i] for i in selected_indices]
+            self.mask_files = [self.mask_files[i] for i in selected_indices]
 
         # Precompute patch indices for each image
         self.patch_indices = []
@@ -247,14 +253,14 @@ if __name__ == "__main__":
             # TODO: Download the dataset from gcloud
             # https://console.cloud.google.com/storage/browser/segmentai_dataset
         full_dataset = PatchBasedDataset(image_dir, mask_dir)
-        torch.save(full_dataset, dataset_dir)
+        torch.save(full_dataset, dataset_dir)p
 
     train_size = int(0.8 * len(full_dataset))
     val_size = len(full_dataset) - train_size
     train_dataset, val_dataset = random_split(full_dataset, [train_size, val_size])
 
-    train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True, num_workers=4, pin_memory=True)
-    val_loader = DataLoader(val_dataset, batch_size=4, shuffle=False, num_workers=4, pin_memory=True)
+    train_loader = DataLoader(train_dataset, batch_size=1000, shuffle=True, num_workers=10//2, pin_memory=True)
+    val_loader = DataLoader(val_dataset, batch_size=1000, shuffle=False, num_workers=10//2, pin_memory=True)
 
     device = torch.device("cpu")
     model = UNet3D(1, 6).to(device)

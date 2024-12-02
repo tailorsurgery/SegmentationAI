@@ -9,14 +9,21 @@ def load_multiclass_mask(mask_path):
     mask = sitk.ReadImage(mask_path)
     return sitk.GetArrayFromImage(mask)
 
-def align_image(image_path):
+def align_image(image_path, flip=True):
     """
     Load the image and get its properties for visualization.
     """
     image = sitk.ReadImage(image_path)
     image_array = sitk.GetArrayFromImage(image)
-    image_spacing = np.array(image.GetSpacing())
-    return image_array, image_spacing
+    image_spacing = image.GetSpacing()
+    if flip:
+        image_array = np.flip(image_array, axis=0)
+        image = sitk.GetImageFromArray(image_array)
+        #image_spacing = image.GetSpacing()
+        image.SetSpacing(image_spacing)
+        sitk.WriteImage(image, image_path)
+
+    return image_array, np.array(image_spacing), image_spacing
 
 def create_color_map(multiclass_mask):
     """
@@ -35,13 +42,14 @@ def viewer_with_colored_classes(image_array, multiclass_mask, image_spacing):
 
     # Axial view
     axial_viewer = napari.Viewer(title="Axial View")
-    axial_viewer.add_image(image_array, name="Axial Image", colormap="gray", scale=image_spacing)
+    axial_spacing = image_spacing[[2, 1, 0]]
+    axial_viewer.add_image(image_array, name="Axial Image", colormap="gray", scale=axial_spacing)
     for cls, color in color_map.items():
         class_mask = (multiclass_mask == cls).astype(np.uint8)
         axial_viewer.add_labels(
             class_mask,
             name=f"Class {cls}",
-            scale=image_spacing,
+            scale=axial_spacing,  # Swap the axes for coronal view
             opacity=0.5,
             colormap={1: color},  # Map the binary mask to the unique color
         )
@@ -68,7 +76,7 @@ def viewer_with_colored_classes(image_array, multiclass_mask, image_spacing):
     sagittal_viewer = napari.Viewer(title="Sagittal View")
     sagittal_image = np.swapaxes(image_array, 0, 2)
     sagittal_image = np.rot90(sagittal_image, k=1, axes=(1, 2))
-    sagittal_spacing = image_spacing[[2, 1, 0]]
+    sagittal_spacing = image_spacing[[1, 2, 0]]
     sagittal_viewer.add_image(sagittal_image, name="Sagittal Image", colormap="gray", scale=sagittal_spacing)
     for cls, color in color_map.items():
         class_mask = (multiclass_mask == cls).astype(np.uint8)
@@ -85,15 +93,37 @@ def viewer_with_colored_classes(image_array, multiclass_mask, image_spacing):
     # Run Napari viewers
     napari.run()
 
+'''
+### Example main 1 - On single case
 if __name__ == "__main__":
     # Paths to image and masks
-    case = '240042-2'
+    case = '240042-1'
+
     image_path = f'/Users/samyakarzazielbachiri/Documents/SegmentationAI/data/segmentai_dataset/images/{case}_images.nrrd'
     mask_path = f'/Users/samyakarzazielbachiri/Documents/SegmentationAI/data/segmentai_dataset/multiclass_masks/{case}_multiclass_mask.nrrd'
 
     # Load image and mask
-    image_array, image_spacing = align_image(image_path)
+    image_array, image_spacing, _ = align_image(image_path, flip=False)
     multiclass_mask = load_multiclass_mask(mask_path)
 
     # Visualize with colored classes
     viewer_with_colored_classes(image_array, multiclass_mask, image_spacing)
+'''
+
+'''
+### Example main 2 - On loop
+if __name__ == "__main__":
+    # For all cases in the segmentai_dataset. Search for the images and masks in the data folder.
+    folder = '/Users/samyakarzazielbachiri/Documents/SegmentationAI/data/segmentai_dataset/iiimg2'
+    cases = [f.split('_')[0] for f in os.listdir(folder) if f.endswith('.nrrd')]
+    for case in cases:
+        print(f"Processing case: {case}")
+        image_path = f'/Users/samyakarzazielbachiri/Documents/SegmentationAI/data/segmentai_dataset/iiimg2/{case}_images.nrrd'
+        mask_path = f'/Users/samyakarzazielbachiri/Documents/SegmentationAI/data/segmentai_dataset/multiclass_masks/{case}_multiclass_mask.nrrd'
+
+        # Load image and mask
+        image_array, image_spacing, _ = align_image(image_path, flip=True)
+        multiclass_mask = load_multiclass_mask(mask_path)
+
+        # Visualize with colored classes
+        #viewer_with_colored_classes(image_array, multiclass_mask, image_spacing)'''
