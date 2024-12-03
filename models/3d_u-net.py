@@ -53,7 +53,7 @@ def evaluate_model(model, test_loader, device, num_classes):
     return avg_dice_scores
 
 # Visualize predictions
-def visualize_predictions(model, test_loader, device, num_classes, num_samples=5):
+def visualize_predictions(model, test_loader, device, num_classes, num_samples=2):
     print("Starting visualization...")
     start_time = time.time()
     model.eval()
@@ -129,6 +129,7 @@ class PatchBasedDataset(Dataset):
         return sum(len(patches) for patches in self.patch_indices)
 
     def __getitem__(self, idx):
+        global img_idx, patch_coords
         cumulative_patches = 0
         for img_idx, patches in enumerate(self.patch_indices):
             if idx < cumulative_patches + len(patches):
@@ -222,7 +223,7 @@ def train_model(model, train_loader, val_loader, device, epochs=10, lr=1e-3):
         train_loss = running_loss / len(train_loader)
         train_losses.append(train_loss)
         print(f"Training Loss: {train_loss:.4f}")
-
+        torch.save(model.state_dict(), f"checkpoint_epoch_{epoch}.pth")
         model.eval()
         running_val_loss = 0.0
         with torch.no_grad():
@@ -251,10 +252,11 @@ def train_model(model, train_loader, val_loader, device, epochs=10, lr=1e-3):
 # Main
 if __name__ == "__main__":
     # Paths
-    image_dir = '/Users/samyakarzazielbachiri/Documents/SegmentationAI/data/segmentai_dataset/images'
-    mask_dir = '/Users/samyakarzazielbachiri/Documents/SegmentationAI/data/segmentai_dataset/multiclass_masks'
-    dataset_dir = '/Users/samyakarzazielbachiri/Documents/SegmentationAI/data/segmentai_dataset/processed/processed_dataset.pth'
-    model_save_path = '/Users/samyakarzazielbachiri/Documents/SegmentationAI/models/3d_unet/3d_unet_model.pth'
+    path = '/Users/samyakarzazielbachiri/Documents/SegmentationAI'
+    image_dir = path + '/data/segmentai_dataset/images'
+    mask_dir = path + '/data/segmentai_dataset/multiclass_masks'
+    dataset_dir = path + '/data/segmentai_dataset/processed/processed_dataset.pth'
+    model_save_path = path + '/models/3d_unet/3d_unet_model.pth'
 
     if os.path.exists(dataset_dir):
         print("Loading preprocessed dataset...")
@@ -271,8 +273,8 @@ if __name__ == "__main__":
     val_size = len(full_dataset) - train_size
     train_dataset, val_dataset = random_split(full_dataset, [train_size, val_size])
 
-    train_loader = DataLoader(train_dataset, batch_size=1000, shuffle=True, num_workers=10//2, pin_memory=True)
-    val_loader = DataLoader(val_dataset, batch_size=1000, shuffle=False, num_workers=10//2, pin_memory=True)
+    train_loader = DataLoader(train_dataset, batch_size=2, shuffle=True, num_workers=2, pin_memory=True)
+    val_loader = DataLoader(val_dataset, batch_size=2, shuffle=False, num_workers=2, pin_memory=True)
 
     device = torch.device("cpu")
     model = UNet3D(1, 6).to(device)
