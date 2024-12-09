@@ -33,9 +33,9 @@ case = "240002"
 bucket_name = "segmentai_dataset"  # Replace with your bucket name
 nifti_images_blob_name = f"images/{case}_images.nii"  # NIfTI file in the bucket
 nifti_masks_blob_name = f"masks/{case}_masks.nii"  # NIfTI file in the bucket
-local_nifti_image_path = f"./temp_nifti/images/{case}_images.nii" # Local path to save the processed images
-local_nifti_masks_path = f"./temp_nifti/masks/{case}_masks.nii"  # Local path to save the processed masks
+local_nifti_image_path = f"C:/Users/Laura Montserrat/Documents/Samya/SegmentationAI/data/segmentai_dataset/temp_nifti/images/{case}_images.nii" # Local path to save the processed images
+local_nifti_masks_path = f"C:/Users/Laura Montserrat/Documents/Samya/SegmentationAI/data/segmentai_dataset/temp_nifti/masks/{case}_masks.nii"  # Local path to save the processed masks
 
 # Download the NIfTI file from the bucket
 download_nifti(bucket_name, nifti_images_blob_name, local_nifti_image_path)
-upload_nifti(bucket_name, local_nifti_masks_path, nifti_masks_blob_name)
+#upload_nifti(bucket_name, local_nifti_masks_path, nifti_masks_blob_name)

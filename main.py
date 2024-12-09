@@ -6,8 +6,8 @@ from utils.align_image_multiclass_mask import *
 # Main function
 if __name__ == "__main__":
     # Set up directories
-    input_dir = '/Users/samyakarzazielbachiri/Documents/SegmentationAI/scripts/input'
-    output_dir = '/Users/samyakarzazielbachiri/Documents/SegmentationAI/scripts/output'
+    input_dir = 'C:/Users/Laura Montserrat/Documents/Samya/SegmentationAI/scripts/input'
+    output_dir = 'C:/Users/Laura Montserrat/Documents/Samya/SegmentationAI/scripts/output'
     os.makedirs(output_dir, exist_ok=True)
 
     case_number = input("Enter the starting case number: ")

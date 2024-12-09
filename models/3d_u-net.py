@@ -29,7 +29,7 @@ def evaluate_model(model, test_loader, device, num_classes):
     start_time = time.time()
     model.eval()
     total_dice_scores = np.zeros(num_classes)
-    num_batches = 0
+    num_batches = 5
 
     with torch.no_grad():
         for images, masks in tqdm(test_loader, desc="Evaluating"):
@@ -53,7 +53,7 @@ def evaluate_model(model, test_loader, device, num_classes):
     return avg_dice_scores
 
 # Visualize predictions
-def visualize_predictions(model, test_loader, device, num_classes, num_samples=2):
+def visualize_predictions(model, test_loader, device, num_classes, num_samples=20):
     print("Starting visualization...")
     start_time = time.time()
     model.eval()
@@ -98,7 +98,7 @@ def predict(model, image, device):
 
 # Dataset class
 class PatchBasedDataset(Dataset):
-    def __init__(self, image_dir, mask_dir, patch_size=(128, 128, 128), stride=(64, 64, 64), num_cases=2):
+    def __init__(self, image_dir, mask_dir, patch_size=(128, 128, 128), stride=(64, 64, 64), num_cases=50):
         self.image_dir = image_dir
         self.mask_dir = mask_dir
         self.image_files = sorted([f for f in os.listdir(image_dir) if f.endswith('.nrrd')])
@@ -252,11 +252,11 @@ def train_model(model, train_loader, val_loader, device, epochs=10, lr=1e-3):
 # Main
 if __name__ == "__main__":
     # Paths
-    path = '/Users/samyakarzazielbachiri/Documents/SegmentationAI'
+    path = 'C:/Users/Laura Montserrat/Documents/Samya/SegmentationAI'
     image_dir = path + '/data/segmentai_dataset/images'
     mask_dir = path + '/data/segmentai_dataset/multiclass_masks'
     dataset_dir = path + '/data/segmentai_dataset/processed/processed_dataset.pth'
-    model_save_path = path + '/models/3d_unet/3d_unet_model.pth'
+    model_save_path = path + '/models/unet/3d_unet_model.pth'
 
     if os.path.exists(dataset_dir):
         print("Loading preprocessed dataset...")
@@ -273,10 +273,10 @@ if __name__ == "__main__":
     val_size = len(full_dataset) - train_size
     train_dataset, val_dataset = random_split(full_dataset, [train_size, val_size])
 
-    train_loader = DataLoader(train_dataset, batch_size=2, shuffle=True, num_workers=2, pin_memory=True)
-    val_loader = DataLoader(val_dataset, batch_size=2, shuffle=False, num_workers=2, pin_memory=True)
+    train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True, num_workers=2, pin_memory=True)
+    val_loader = DataLoader(val_dataset, batch_size=4, shuffle=False, num_workers=2, pin_memory=True)
 
-    device = torch.device("cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = UNet3D(1, 6).to(device)
 
     train_losses, val_losses = train_model(model, train_loader, val_loader, device, epochs=1, lr=1e-3)
