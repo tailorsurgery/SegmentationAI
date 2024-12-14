@@ -8,24 +8,58 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 from torch import nn, optim
 from torch.utils.data import Dataset, DataLoader, random_split
+
 import random
 
+# Visualization function
+def visualize_patch(image_patch, mask_patch):
+    """
+    Visualize the middle slice of a 3D image and mask patch.
+    """
+    # Calculate the middle slice in the z-dimension
+    z_middle = image_patch.shape[1] // 2
+
+    # Extract the middle slice for visualization
+    image_slice = image_patch[0, z_middle, :, :]  # First channel, middle z-slice
+    mask_slice = mask_patch[z_middle, :, :]  # Middle z-slice of the mask
+
+    # Plot the image and mask side-by-side
+    plt.figure(figsize=(10, 5))
+    plt.subplot(1, 2, 1)
+    plt.imshow(image_slice, cmap="gray")
+    plt.title("Image Patch (Middle Slice)")
+    plt.axis("off")
+
+    plt.subplot(1, 2, 2)
+    plt.imshow(mask_slice, cmap="jet", vmin=0, vmax=5)
+    plt.title("Mask Patch (Middle Slice)")
+    plt.axis("off")
+
+    plt.tight_layout()
+    plt.show()
+
+
 # Extract patches from the volume
-def extract_patches(volume, patch_size=(128, 128, 128), stride=(64, 64, 64)):
-    _, D, H, W = volume.shape
+def extract_patches(volume, patch_size=(512, 512, 512), stride=(128, 128, 128)):
+    _, d, h, w = volume.shape
+
     pd, ph, pw = patch_size
     sd, sh, sw = stride
 
     patches = []
-    for z in range(0, D - pd + 1, sd):
-        for y in range(0, H - ph + 1, sh):
-            for x in range(0, W - pw + 1, sw):
+    for z in range(0, d - pd + 1, sd):
+        for y in range(0, h - ph + 1, sh):
+            for x in range(0, w - pw + 1, sw):
                 patches.append((z, z+pd, y, y+ph, x, x+pw))
+    print(f"*Volume Shape {volume.shape}")
+    print(f"*Patch Size {patch_size}")
+    print(f"*Stride {stride}")
+    print(f"*Number of Patches {len(patches)}")
     return patches
 
 # Evaluate model performance
 def evaluate_model(model, test_loader, device, num_classes):
-    print("Starting evaluation...")
+    print("*********************Starting evaluation...*********************")
     start_time = time.time()
     model.eval()
     total_dice_scores = np.zeros(num_classes)
@@ -33,6 +67,7 @@ def evaluate_model(model, test_loader, device, num_classes):
 
     with torch.no_grad():
         for images, masks in tqdm(test_loader, desc="Evaluating"):
+
             images, masks = images.to(device), masks.to(device)
             outputs = model(images)
             predictions = torch.argmax(outputs, dim=1)
@@ -54,7 +89,7 @@ def evaluate_model(model, test_loader, device, num_classes):
 
 # Visualize predictions
 def visualize_predictions(model, test_loader, device, num_classes, num_samples=20):
-    print("Starting visualization...")
+    print("*********************Starting visualization...*********************")
     start_time = time.time()
     model.eval()
     with torch.no_grad():
@@ -85,7 +120,7 @@ def visualize_predictions(model, test_loader, device, num_classes, num_samples=2
 
 # Predict single volume
 def predict(model, image, device):
-    print("Starting prediction...")
+    print("*********************Starting prediction...*********************")
     start_time = time.time()
     model.eval()
     image_tensor = torch.tensor(image, dtype=torch.float32).unsqueeze(0).unsqueeze(0).to(device)
@@ -98,13 +133,14 @@ def predict(model, image, device):
 
 # Dataset class
 class PatchBasedDataset(Dataset):
-    def __init__(self, image_dir, mask_dir, patch_size=(128, 128, 128), stride=(64, 64, 64), num_cases=50):
+    def __init__(self, image_dir, mask_dir, patch_size=(256, 256, 256), stride=(128, 128, 128), num_cases=None, visualize=True):
         self.image_dir = image_dir
         self.mask_dir = mask_dir
         self.image_files = sorted([f for f in os.listdir(image_dir) if f.endswith('.nrrd')])
         self.mask_files = sorted([f for f in os.listdir(mask_dir) if f.endswith('.nrrd')])
         self.patch_size = patch_size
         self.stride = stride
+        self.visualize = visualize
 
         print(f"Found {len(self.image_files)} images and {len(self.mask_files)} masks.")
         assert len(self.image_files) == len(self.mask_files), \
@@ -129,7 +165,6 @@ class PatchBasedDataset(Dataset):
         return sum(len(patches) for patches in self.patch_indices)
 
     def __getitem__(self, idx):
-        global img_idx, patch_coords
         cumulative_patches = 0
         for img_idx, patches in enumerate(self.patch_indices):
             if idx < cumulative_patches + len(patches):
@@ -142,6 +177,8 @@ class PatchBasedDataset(Dataset):
         mask_path = os.path.join(self.mask_dir, self.mask_files[img_idx])
 
         print(f"Processing case: {os.path.basename(image_path)}")
+        print(f"    With masks: {os.path.basename(mask_path)}")
+        print(f"Accessing patch {idx} from image {os.path.basename(self.image_files[img_idx])}")
 
         image = sitk.ReadImage(image_path)
         mask = sitk.ReadImage(mask_path)
@@ -157,10 +194,14 @@ class PatchBasedDataset(Dataset):
         image_patch = image_array[:, z_start:z_end, y_start:y_end, x_start:x_end]
         mask_patch = mask_array[z_start:z_end, y_start:y_end, x_start:x_end]
 
+        if self.visualize:
+            visualize_patch(image_patch, mask_patch)
+
         image_tensor = torch.tensor(image_patch, dtype=torch.float32)
         mask_tensor = torch.tensor(mask_patch, dtype=torch.int64)
 
         return image_tensor, mask_tensor
+
 
 # 3D U-Net model
 class UNet3D(nn.Module):
@@ -193,7 +234,7 @@ class UNet3D(nn.Module):
 
 # Training function
 def train_model(model, train_loader, val_loader, device, epochs=10, lr=1e-3):
-    print("Starting training...")
+    print("*********************Starting training...*********************")
     start_time = time.time()
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=lr)
@@ -252,11 +293,15 @@ def train_model(model, train_loader, val_loader, device, epochs=10, lr=1e-3):
 # Main
 if __name__ == "__main__":
     # Paths
-    path = 'C:/Users/Laura Montserrat/Documents/Samya/SegmentationAI'
-    image_dir = path + '/data/segmentai_dataset/images'
-    mask_dir = path + '/data/segmentai_dataset/multiclass_masks'
-    dataset_dir = path + '/data/segmentai_dataset/processed/processed_dataset.pth'
-    model_save_path = path + '/models/unet/3d_unet_model.pth'
+    region = 'arms'
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    script_dir = os.path.dirname(script_dir)
+    # go back one folder to get to the root folder
+
+    image_dir = script_dir + '/data/segmentai_dataset/images/' + region
+    mask_dir = script_dir + '/data/segmentai_dataset/multiclass_masks/' + region
+    dataset_dir = script_dir + '/data/segmentai_dataset/processed/' + region + '_processed_dataset.pth'
+    model_save_path = script_dir + '/models/unet/' + region + '_3d_unet_model.pth'
 
     if os.path.exists(dataset_dir):
         print("Loading preprocessed dataset...")
@@ -264,9 +309,9 @@ if __name__ == "__main__":
     else:
         if not os.path.exists(image_dir) or not os.path.exists(mask_dir):
             raise FileNotFoundError("Image or mask directory not found!")
-            # TODO: Download the dataset from gcloud
+            # TODO: Download the dataset from gcloud storage
             # https://console.cloud.google.com/storage/browser/segmentai_dataset
-        full_dataset = PatchBasedDataset(image_dir, mask_dir)
+        full_dataset = PatchBasedDataset(image_dir, mask_dir, visualize=False)
         torch.save(full_dataset, dataset_dir)
 
     train_size = int(0.8 * len(full_dataset))
@@ -279,7 +324,8 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = UNet3D(1, 6).to(device)
 
-    train_losses, val_losses = train_model(model, train_loader, val_loader, device, epochs=1, lr=1e-3)
+    # TODO: Change number of epochs more than 2 (20??)
+    train_losses, val_losses = train_model(model, train_loader, val_loader, device, epochs=20, lr=1e-3)
     torch.save(model.state_dict(), model_save_path)
     print(f"Model saved to {model_save_path}")
 
