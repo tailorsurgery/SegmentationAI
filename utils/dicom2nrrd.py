@@ -106,11 +106,12 @@ def load_and_convert_dicom_to_nrrd(input_dir, output_dir, case_name, count):
             nrrd_path = os.path.join(output_dir, f"{case_name}-{count}_images.nrrd")
             sitk.WriteImage(image, nrrd_path)
             _,_,_ = align_image(nrrd_path, flip=True)
-            print(f"NRRD file saved at: {nrrd_path}")
+            print(f"NRRD file saved correctly")
 
             count += 1
         except Exception as e:
-            print(f"Failed to convert series {series_description} to NRRD. Error: {e}")
+            pass
+            #print(f"Failed to convert series {series_description} to NRRD. Error: {e}")
 
     return count
 
