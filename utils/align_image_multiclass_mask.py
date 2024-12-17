@@ -4,12 +4,33 @@ import napari
 import os
 from PyQt5.QtWidgets import QApplication
 
+import warnings
+warnings.filterwarnings("ignore", message="A QApplication is already running with 1 event loop.*")
+warnings.filterwarnings("ignore", message="color_dict did not provide a default color.*")
+
+
 def load_multiclass_mask(mask_path):
     """
     Load a multiclass mask from a file.
     """
     mask = sitk.ReadImage(mask_path)
-    return sitk.GetArrayFromImage(mask)
+    metadata_keys = mask.GetMetaDataKeys()
+
+    # Filter out keys that start with "label_" and extract their values
+    labels = {}
+    for key in metadata_keys:
+        if key.startswith("label_"):
+            class_index = int(key.split("_")[1])  # Extract the class index
+            class_name = mask.GetMetaData(key)
+            labels[class_index] = class_name
+    if not labels:
+        print("No label_ headers found in metadata. Assigning temporary class names.")
+        mask_array = sitk.GetArrayFromImage(mask)
+        unique_classes = np.unique(mask_array)
+        labels = {int(cls): f"Class_{cls}" for cls in unique_classes}
+
+    print(labels)
+    return sitk.GetArrayFromImage(mask), labels
 
 
 def apply_windowing(image, window_level=40, window_width=400):
@@ -48,26 +69,27 @@ def align_image(image_path, flip=False, save=False):
 
     return image_array, np.array(image_spacing), image_spacing
 
-def create_color_map(multiclass_mask):
+def create_color_map(multiclass_mask, labels):
     """
     Generate a unique color map for each class in the multiclass mask.
     """
-    unique_classes = np.unique(multiclass_mask)
-    color_map = {cls: np.random.rand(3,) for cls in unique_classes if cls != 0}  # Skip background class
-    color_map[None] = [1.0, 1.0, 1.0]  # Default color (white)
+    color_map = {index: np.random.rand(3, ) for index in labels if index != 0}  # Skip background class
+    color_map[0] = [1.0, 1.0, 1.0]  # Default color (white)
     return color_map
 
-def viewer_with_colored_classes(image_array, multiclass_mask, image_spacing):
+def viewer_with_colored_classes(image_array, multiclass_mask, image_spacing, labels):
     """
     Create separate Napari viewers for axial, coronal, and sagittal views with colored classes.
     """
+    print("Loading Viewer...")
     # Generate color map for the classes
-    color_map = create_color_map(multiclass_mask)
+    color_map = create_color_map(multiclass_mask, labels)
 
     # Axial view
     axial_viewer = napari.Viewer(title="Axial View")
     axial_spacing = image_spacing[[2, 1, 0]]
     axial_viewer.add_image(image_array, name="Axial Image", colormap="gray", scale=axial_spacing)
+
     # Coronal view
     coronal_viewer = napari.Viewer(title="Coronal View")
     coronal_image = np.swapaxes(image_array, 0, 1)
@@ -87,11 +109,13 @@ def viewer_with_colored_classes(image_array, multiclass_mask, image_spacing):
     #t3d_viewer.add_image(image_array, name="3D Image", colormap="gray", scale=axial_spacing, rendering='mip')
 
     for cls, color in color_map.items():
+        '''if cls == 0:
+            continue'''
         class_mask = (multiclass_mask == cls).astype(np.uint8)
 
         axial_viewer.add_labels(
             class_mask,
-            name=f"Class {cls}",
+            name=f"Class {cls}: {labels[cls]}",
             scale=axial_spacing,  # Swap the axes for coronal view
             opacity=0.5,
             colormap={1: color},  # Map the binary mask to the unique color
@@ -101,7 +125,7 @@ def viewer_with_colored_classes(image_array, multiclass_mask, image_spacing):
         coronal_mask = np.flip(coronal_mask, axis=(0, 1))
         coronal_viewer.add_labels(
             coronal_mask,
-            name=f"Class {cls}",
+            name=f"Class {cls}: {labels[cls]}",
             scale=coronal_spacing,
             opacity=0.5,
             colormap={1: color},
@@ -112,7 +136,7 @@ def viewer_with_colored_classes(image_array, multiclass_mask, image_spacing):
         sagittal_mask = np.rot90(sagittal_mask, k=1, axes=(1, 2))
         sagittal_viewer.add_labels(
             sagittal_mask,
-            name=f"Class {cls}",
+            name=f"Class {cls}: {labels[cls]}",
             scale=sagittal_spacing,
             opacity=0.5,
             colormap={1: color},
@@ -121,9 +145,9 @@ def viewer_with_colored_classes(image_array, multiclass_mask, image_spacing):
 
         t3d_viewer.add_labels(
             class_mask,
-            name=f"Class {cls}",
+            name=f"Class {cls}: {labels[cls]}",
             scale=axial_spacing,
-            opacity=0.5,
+            opacity=0.9,
             colormap={1: color},
         )
 
@@ -132,36 +156,72 @@ def viewer_with_colored_classes(image_array, multiclass_mask, image_spacing):
     coronal_viewer.window._qt_window.resize(1000, 100)
     axial_viewer.window._qt_window.resize(1000, 100)
     t3d_viewer.window._qt_window.resize(1000, 100)
+
     window_width = 1920
     window_height = 1059
     screen_geometry = QApplication.desktop().screenGeometry()
     screen_width = screen_geometry.width()
     screen_height = screen_geometry.height()
-    # Example: Place a window in the center of the screen
+
+
     x = (screen_width - window_width) // 2
     y = (screen_height - window_height) // 2
+
     axial_viewer.window._qt_window.move(x+900, y)
     sagittal_viewer.window._qt_window.move(x, y+500)
     coronal_viewer.window._qt_window.move(x, y)
     t3d_viewer.window._qt_window.move(x+900, y+500)
-    # Run Napari viewers
+
     napari.run()
 
-'''
-### Example main 1 - On single case
-if __name__ == "__main__":
-    # Paths to image and masks
-    case = '240042-1'
-    project_path = os.path.dirname(os.path.abspath(__file__))
-    image_path = project_path + f'/../data/segmentai_dataset/images/{case}_images.nrrd'
-    mask_path = project_path + f'/../data/segmentai_dataset/multiclass_masks/{case}_multiclass_mask.nrrd'
+def update_nrrd_class_names(nrrd_path, updated_names, output_path=None):
+    """
+    Update class names in an existing NRRD file.
 
+    Args:
+        nrrd_path (str): Path to the existing NRRD file.
+        updated_names (dict): Dictionary mapping class indices to new names.
+        output_path (str): Path to save the updated file (optional, overwrites if None).
+    """
+    # Load the existing NRRD file
+    mask_image = sitk.ReadImage(nrrd_path)
+
+    # Update metadata with new class names
+    for class_value, class_name in updated_names.items():
+        mask_image.SetMetaData(f"label_{class_value}", class_name)
+
+    # Save the updated NRRD file
+    if output_path is None:
+        output_path = nrrd_path  # Overwrite the existing file
+    sitk.WriteImage(mask_image, output_path)
+    print(f"Updated NRRD saved at {output_path}")
+
+
+
+
+
+
+### Example main 1 - On single case
+'''if __name__ == "__main__":
+    # Paths to image and masks
+    case = '240088-2' #TODO - HEREEEEEEEE
+    print(f"Processing case: {case}")
+    image_path = f'/Users/samyakarzazielbachiri/Documents/SegmentationAI/scripts/output/images/{case}_images.nrrd'
+    mask_path = f"/Users/samyakarzazielbachiri/Documents/SegmentationAI/scripts/output/multiclass_masks/{case}_multiclass_mask.nrrd"
     # Load image and mask
     image_array, image_spacing, _ = align_image(image_path, flip=False)
-    multiclass_mask = load_multiclass_mask(mask_path)
 
-    # Visualize with colored classes
-    viewer_with_colored_classes(image_array, multiclass_mask, image_spacing)
+    p = 1
+
+    if p == 1:
+        new_class_names = {0: "Background", 2: "Radius_L", 1: "Humerus_L", 4: "Hand_L", 3: "Ulna_L"}
+        #sort the new_class_names
+        new_class_names = dict(sorted(new_class_names.items()))
+        update_nrrd_class_names(mask_path, new_class_names)
+
+    multiclass_mask, labels = load_multiclass_mask(mask_path)
+
+    viewer_with_colored_classes(image_array, multiclass_mask, image_spacing, labels)
 '''
 
 '''

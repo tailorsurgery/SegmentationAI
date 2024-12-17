@@ -1,6 +1,8 @@
 import os
 import SimpleITK as sitk
 import numpy as np
+
+
 from utils.align_image_multiclass_mask import *
 
 
@@ -37,11 +39,13 @@ def apply_windowing(image, window_level=40, window_width=400):
     return windowed_image
 
 
-def load_and_convert_dicom_to_nrrd(input_dir, output_dir, case_name, count):
+
+
+
+def load_and_convert_dicom_to_nrrd(input_dir, output_dir, case_name, count, order_by="0008|0020"):
     """
-    Load valid DICOM files in the input_dir, group by SeriesDescription,
-    sort slices by InstanceNumber, apply soft tissue windowing, 
-    and save each series as a 3D NRRD file in the output_dir.
+    Load valid DICOM files, group by SeriesNumber, sort groups by a header,
+    and save each group as a 3D NRRD file.
     """
     print(f"Processing folder: {input_dir}")
     valid_dicom_files = validate_dicom_files(input_dir)
@@ -52,69 +56,58 @@ def load_and_convert_dicom_to_nrrd(input_dir, output_dir, case_name, count):
 
     print(f"Found {len(valid_dicom_files)} valid DICOM files.")
 
-    # Group valid files by SeriesDescription
+    # Step 1: Group files by SeriesNumber
     series_groups = {}
+    group_metadata = {}  # To store additional headers for sorting
     for file_path in valid_dicom_files:
         try:
             reader = sitk.ImageFileReader()
             reader.SetFileName(file_path)
             reader.ReadImageInformation()
 
-            # Get metadata
-            series_description = reader.GetMetaData("0008|103e") if reader.HasMetaDataKey(
-                "0008|103e") else f"Series_{count}"
-            instance_number = int(reader.GetMetaData("0020|0013")) if reader.HasMetaDataKey("0020|0013") else count
+            # Extract SeriesNumber and sorting metadata
+            series_number = int(reader.GetMetaData("0020|0011")) if reader.HasMetaDataKey("0020|0011") else -1
+            instance_number = int(reader.GetMetaData("0020|0013")) if reader.HasMetaDataKey("0020|0013") else 0
 
-            if series_description not in series_groups:
-                series_groups[series_description] = []
-            series_groups[series_description].append((file_path, instance_number))
+            # Extract the header to sort groups later
+            header_value = reader.GetMetaData(order_by) if reader.HasMetaDataKey(order_by) else ""
+
+            if series_number not in series_groups:
+                series_groups[series_number] = []
+                group_metadata[series_number] = header_value
+
+            series_groups[series_number].append((file_path, instance_number))
         except Exception as e:
             print(f"Error reading metadata for {file_path}: {e}")
 
-    # Process each series
-    for series_description, file_list in series_groups.items():
-        print(f"Processing series: {series_description} with {len(file_list)} files.")
+    # Step 2: Sort the groups by the chosen header
+    sorted_series_numbers = sorted(series_groups.keys(), key=lambda sn: group_metadata.get(sn, ""))
 
-        # Sort files by InstanceNumber
-        sorted_files = sorted(file_list, key=lambda x: x[1] if x[1] is not None else float('inf'))
+    # Step 3: Process each sorted group
+    for series_number in sorted_series_numbers:
+        file_list = series_groups[series_number]
+        print(f"Processing SeriesNumber: {series_number} with {len(file_list)} files. Sort key: {group_metadata[series_number]}")
+
+        # Sort files by InstanceNumber within the group
+        sorted_files = sorted(file_list, key=lambda x: x[1])
         sorted_file_paths = [file[0] for file in sorted_files]
 
         try:
             reader = sitk.ImageSeriesReader()
             reader.SetFileNames(sorted_file_paths)
             image = reader.Execute()
-            print(image.GetSize())
-
-            # Check for non-uniform slice spacing and resample if necessary
-            if image.GetSpacing()[2] == 0:
-                print("Non-uniform slice spacing detected. Attempting resampling...")
-                resampler = sitk.ResampleImageFilter()
-                desired_spacing = min(image.GetSpacing())  # Define your desired spacing here
-                new_size = [
-                    int(image.GetSize()[0] * (image.GetSpacing()[0] / desired_spacing)),
-                    int(image.GetSize()[1] * (image.GetSpacing()[1] / desired_spacing)),
-                    int(image.GetSize()[2] * (image.GetSpacing()[2] / desired_spacing)),
-                ]
-                resampler.SetOutputSpacing([image.GetSpacing()[0], image.GetSpacing()[1], desired_spacing])
-                resampler.SetSize(new_size)
-                resampler.SetOutputOrigin(image.GetOrigin())
-                resampler.SetOutputDirection(image.GetDirection())
-                resampler.SetInterpolator(sitk.sitkLinear)
-                image = resampler.Execute(image)
+            print(f"Image size: {image.GetSize()}")
 
             # Save the 3D image as NRRD
-            nrrd_path = os.path.join(output_dir, f"{case_name}-{count}_images.nrrd")
+            nrrd_path = os.path.join(output_dir, f"{case_name}-{count}_Series_{series_number}.nrrd")
             sitk.WriteImage(image, nrrd_path)
-            _,_,_ = align_image(nrrd_path, flip=True)
-            print(f"NRRD file saved correctly")
+            print(f"NRRD file saved: {nrrd_path}")
 
             count += 1
         except Exception as e:
-            pass
-            #print(f"Failed to convert series {series_description} to NRRD. Error: {e}")
+            print(f"Failed to process SeriesNumber {series_number}. Error: {e}")
 
     return count
-
 
 def process_images(input_dir, output_dir, case_number):
     """
@@ -132,3 +125,14 @@ def process_images(input_dir, output_dir, case_number):
         except Exception as e:
             print(f"Failed to process folder {folder}: {e}")
     print("All cases processed successfully.")
+
+def multiclass_mask_to_stl(mask_path, output_dir):
+    """
+    Convert a multiclass mask to a 3D STL file for visualization.
+    """
+    # Load the multiclass mask
+    multiclass_mask = load_multiclass_mask(mask_path)
+
+    # Convert the mask to a binary mask
+    binary_mask = np.zeros_like(multiclass_mask, dtype=np.uint8)
+    binary_mask[multiclass_mask > 0] = 255
