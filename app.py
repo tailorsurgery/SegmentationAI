@@ -1,8 +1,6 @@
 import os
 import sys
-import SimpleITK as sitk
-import numpy as np
-import napari
+
 from PyQt5.QtWidgets import QApplication, QFileDialog, QMainWindow, QPushButton, QVBoxLayout, QWidget, QLabel, QLineEdit
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtCore import Qt
@@ -13,9 +11,12 @@ utils_dir = os.path.join(script_dir, "utils")  # Assuming dicom2nrrd.py is in a 
 if utils_dir not in sys.path:
     sys.path.append(utils_dir)
 
-# Import the function to convert DICOM to NRRD from dicom2nrrd.py
 from utils.dicom2nrrd import process_images  # Adjust the import to match the function in dicom2nrrd.py
 from utils.align_image_multiclass_mask import align_image, load_multiclass_mask, viewer_with_colored_classes
+
+import warnings
+warnings.filterwarnings("ignore", message="A QApplication is already running with 1 event loop.*")
+warnings.filterwarnings("ignore", message="color_dict did not provide a default color.*")
 
 
 class SegmentationAIApp(QMainWindow):
@@ -84,7 +85,7 @@ class SegmentationAIApp(QMainWindow):
             os.makedirs(output_dir, exist_ok=True)
 
             #self.case_name = "240028"  # Adjust the case naming convention if needed
-            # TODO: Activate this ---> process_images(self.dicom_folder, f"{output_dir}/images", self.case_name)
+            process_images(self.dicom_folder, f"{output_dir}/images", self.case_name)
             self.image_path = os.path.join(output_dir, f"images/{self.case_name}_images.nrrd")
             self.mask_path = os.path.join(output_dir, f"multiclass_masks/{self.case_name}_multiclass_mask.nrrd")
             print(f"NRRD file saved correctly")
@@ -107,8 +108,10 @@ class SegmentationAIApp(QMainWindow):
             return'''
 
         image_array, image_spacing, _ = align_image(self.image_path, flip=False, save=False)
-        multiclass_mask = load_multiclass_mask(self.mask_path)
-        viewer_with_colored_classes(image_array, multiclass_mask, image_spacing)
+        multiclass_mask, labels = load_multiclass_mask(self.mask_path)
+        viewer_with_colored_classes(image_array, multiclass_mask, image_spacing, labels)
+
+
 
 if __name__ == "__main__":
     app = QApplication([])

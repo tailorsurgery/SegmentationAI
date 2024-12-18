@@ -38,11 +38,7 @@ def apply_windowing(image, window_level=40, window_width=400):
     )
     return windowed_image
 
-
-
-
-
-def load_and_convert_dicom_to_nrrd(input_dir, output_dir, case_name, count, order_by="0008|0020"):
+def load_and_convert_dicom_to_nrrd(input_dir, output_dir, case_name, count):
     """
     Load valid DICOM files, group by SeriesNumber, sort groups by a header,
     and save each group as a 3D NRRD file.
@@ -56,7 +52,7 @@ def load_and_convert_dicom_to_nrrd(input_dir, output_dir, case_name, count, orde
 
     print(f"Found {len(valid_dicom_files)} valid DICOM files.")
 
-    # Step 1: Group files by SeriesNumber
+    # Group files by SeriesNumber
     series_groups = {}
     group_metadata = {}  # To store additional headers for sorting
     for file_path in valid_dicom_files:
@@ -70,20 +66,20 @@ def load_and_convert_dicom_to_nrrd(input_dir, output_dir, case_name, count, orde
             instance_number = int(reader.GetMetaData("0020|0013")) if reader.HasMetaDataKey("0020|0013") else 0
 
             # Extract the header to sort groups later
-            header_value = reader.GetMetaData(order_by) if reader.HasMetaDataKey(order_by) else ""
+            study_date = reader.GetMetaData("0008|0020") if reader.HasMetaDataKey("0008|0020") else ""
 
             if series_number not in series_groups:
                 series_groups[series_number] = []
-                group_metadata[series_number] = header_value
+                group_metadata[series_number] = study_date
 
             series_groups[series_number].append((file_path, instance_number))
         except Exception as e:
             print(f"Error reading metadata for {file_path}: {e}")
 
-    # Step 2: Sort the groups by the chosen header
+    # Sort the groups by the chosen header
     sorted_series_numbers = sorted(series_groups.keys(), key=lambda sn: group_metadata.get(sn, ""))
 
-    # Step 3: Process each sorted group
+    # Process each sorted group
     for series_number in sorted_series_numbers:
         file_list = series_groups[series_number]
         print(f"Processing SeriesNumber: {series_number} with {len(file_list)} files. Sort key: {group_metadata[series_number]}")

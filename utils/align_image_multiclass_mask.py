@@ -26,8 +26,8 @@ def load_multiclass_mask(mask_path):
     if not labels:
         print("No label_ headers found in metadata. Assigning temporary class names.")
         mask_array = sitk.GetArrayFromImage(mask)
-        unique_classes = np.unique(mask_array)
-        labels = {int(cls): f"Class_{cls}" for cls in unique_classes}
+        #unique_classes = np.unique(mask_array)
+        labels = {int(cls): f"Class_{cls}" for cls in mask_array}
 
     print(labels)
     return sitk.GetArrayFromImage(mask), labels

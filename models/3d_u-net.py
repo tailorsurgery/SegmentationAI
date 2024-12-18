@@ -17,7 +17,7 @@ def visualize_patch(image_patch, mask_patch):
     Visualize the middle slice of a 3D image and mask patch.
     """
     # Calculate the middle slice in the z-dimension
-    z_middle = image_patch.shape[1] // 2
+    z_middle = (image_patch.shape[1] // 2)+20
 
     # Extract the middle slice for visualization
     image_slice = image_patch[0, z_middle, :, :]  # First channel, middle z-slice
@@ -40,7 +40,7 @@ def visualize_patch(image_patch, mask_patch):
 
 
 # Extract patches from the volume
-def extract_patches(volume, patch_size=(512, 512, 512), stride=(128, 128, 128)):
+def extract_patches(volume, patch_size=(128, 128, 128), stride=(64, 64, 64)):
     _, d, h, w = volume.shape
 
     pd, ph, pw = patch_size
@@ -124,6 +124,7 @@ def predict(model, image, device):
     start_time = time.time()
     model.eval()
     image_tensor = torch.tensor(image, dtype=torch.float32).unsqueeze(0).unsqueeze(0).to(device)
+    print(f"Image tensor: {image_tensor[0].item()}")
     with torch.no_grad():
         output = model(image_tensor)
         prediction = torch.argmax(output, dim=1).squeeze().cpu().numpy()
@@ -133,7 +134,7 @@ def predict(model, image, device):
 
 # Dataset class
 class PatchBasedDataset(Dataset):
-    def __init__(self, image_dir, mask_dir, patch_size=(256, 256, 256), stride=(128, 128, 128), num_cases=None, visualize=True):
+    def __init__(self, image_dir, mask_dir, patch_size=(128, 128, 128), stride=(64, 64, 64), num_cases=None, visualize=True):
         self.image_dir = image_dir
         self.mask_dir = mask_dir
         self.image_files = sorted([f for f in os.listdir(image_dir) if f.endswith('.nrrd')])
@@ -199,6 +200,8 @@ class PatchBasedDataset(Dataset):
 
         image_tensor = torch.tensor(image_patch, dtype=torch.float32)
         mask_tensor = torch.tensor(mask_patch, dtype=torch.int64)
+        # print(f"Image tensor: {image_tensor}")
+        # print(f"Mask tensor: {mask_tensor[0].item()}")
 
         return image_tensor, mask_tensor
 
@@ -207,30 +210,77 @@ class PatchBasedDataset(Dataset):
 class UNet3D(nn.Module):
     def __init__(self, in_channels, out_channels):
         super(UNet3D, self).__init__()
-        self.encoder = nn.Sequential(
+
+        # Encoder blocks
+        self.encoder1 = nn.Sequential(
             nn.Conv3d(in_channels, 32, kernel_size=3, padding=1),
             nn.ReLU(inplace=True),
             nn.Conv3d(32, 64, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.AvgPool3d(kernel_size=2)
-        )
-        self.middle = nn.Sequential(
-            nn.Conv3d(64, 128, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv3d(128, 128, kernel_size=3, padding=1),
             nn.ReLU(inplace=True)
         )
-        self.decoder = nn.Sequential(
-            nn.ConvTranspose3d(128, 64, kernel_size=2, stride=2),
-            nn.ReLU(inplace=True),
-            nn.Conv3d(64, out_channels, kernel_size=1)
+        self.pool = nn.MaxPool3d(2)
+
+        self.encoder2 = nn.Sequential(
+            nn.Conv3d(64, 128, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True)
         )
 
+        self.encoder3 = nn.Sequential(
+            nn.Conv3d(128, 256, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True)
+        )
+
+        # Middle block
+        self.middle = nn.Sequential(
+            nn.Conv3d(256, 512, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True)
+        )
+
+        # Up-convolution blocks
+        self.upconv3 = nn.ConvTranspose3d(512, 256, kernel_size=2, stride=2)
+        self.decoder3 = nn.Sequential(
+            nn.Conv3d(512, 256, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True)
+        )
+
+        self.upconv2 = nn.ConvTranspose3d(256, 128, kernel_size=2, stride=2)
+        self.decoder2 = nn.Sequential(
+            nn.Conv3d(256, 128, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True)
+        )
+
+        self.upconv1 = nn.ConvTranspose3d(128, 64, kernel_size=2, stride=2)
+        self.decoder1 = nn.Sequential(
+            nn.Conv3d(128, 64, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True)
+        )
+
+        # Final output layer
+        self.final_conv = nn.Conv3d(64, out_channels, kernel_size=1)
+
     def forward(self, x):
-        enc = self.encoder(x)
-        mid = self.middle(enc)
-        dec = self.decoder(mid)
-        return dec
+        # Encoder path with skip connections
+        enc1 = self.encoder1(x)
+        enc2 = self.encoder2(self.pool(enc1))
+        enc3 = self.encoder3(self.pool(enc2))
+
+        # Middle block
+        mid = self.middle(self.pool(enc3))
+
+        # Decoder path
+        dec3 = self.upconv3(mid)
+        dec3 = torch.cat([dec3, enc3], dim=1)
+        dec3 = self.decoder3(dec3)
+
+        dec2 = self.upconv2(dec3)
+        dec2 = torch.cat([dec2, enc2], dim=1)
+        dec2 = self.decoder2(dec2)
+
+        dec1 = self.upconv1(dec2)
+        dec1 = torch.cat([dec1, enc1], dim=1)
+        dec1 = self.decoder1(dec1)
+
+        return self.final_conv(dec1)
 
 # Training function
 def train_model(model, train_loader, val_loader, device, epochs=10, lr=1e-3):
@@ -311,7 +361,7 @@ if __name__ == "__main__":
             raise FileNotFoundError("Image or mask directory not found!")
             # TODO: Download the dataset from gcloud storage
             # https://console.cloud.google.com/storage/browser/segmentai_dataset
-        full_dataset = PatchBasedDataset(image_dir, mask_dir, visualize=False)
+        full_dataset = PatchBasedDataset(image_dir, mask_dir)
         torch.save(full_dataset, dataset_dir)
 
     train_size = int(0.8 * len(full_dataset))
@@ -325,10 +375,9 @@ if __name__ == "__main__":
     model = UNet3D(1, 6).to(device)
 
     # TODO: Change number of epochs more than 2 (20??)
-    train_losses, val_losses = train_model(model, train_loader, val_loader, device, epochs=20, lr=1e-3)
+    train_losses, val_losses = train_model(model, train_loader, val_loader, device, epochs=5, lr=1e-3)
     torch.save(model.state_dict(), model_save_path)
     print(f"Model saved to {model_save_path}")
 
-    test_loader = val_loader  # For simplicity
-    evaluate_model(model, test_loader, device, 6)
-    visualize_predictions(model, test_loader, device, 6)
+    evaluate_model(model, val_loader, device, 6)
+    #visualize_predictions(model, val_loader, device, 6)
