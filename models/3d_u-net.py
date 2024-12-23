@@ -347,7 +347,7 @@ if __name__ == "__main__":
     script_dir = os.path.dirname(os.path.abspath(__file__))
     script_dir = os.path.dirname(script_dir)
     # go back one folder to get to the root folder
-
+    print(script_dir)
     image_dir = script_dir + '/data/segmentai_dataset/images/' + region
     mask_dir = script_dir + '/data/segmentai_dataset/multiclass_masks/' + region
     dataset_dir = script_dir + '/data/segmentai_dataset/processed/' + region + '_processed_dataset.pth'
@@ -375,7 +375,7 @@ if __name__ == "__main__":
     model = UNet3D(1, 6).to(device)
 
     # TODO: Change number of epochs more than 2 (20??)
-    train_losses, val_losses = train_model(model, train_loader, val_loader, device, epochs=5, lr=1e-3)
+    train_losses, val_losses = train_model(model, train_loader, val_loader, device, epochs=20, lr=1e-3)
     torch.save(model.state_dict(), model_save_path)
     print(f"Model saved to {model_save_path}")
 
