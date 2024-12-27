@@ -118,6 +118,75 @@ def visualize_predictions(model, test_loader, device, num_classes, num_samples=2
     elapsed_time = time.time() - start_time
     print(f"Visualization completed in {elapsed_time:.2f} seconds.")
 
+
+def evaluate_and_visualize_model(
+    model, test_loader, device, num_classes, visualize=False, num_samples=5
+):
+    """
+    Evaluate the model and optionally visualize predictions.
+
+    Args:
+        model (torch.nn.Module): The trained model.
+        test_loader (DataLoader): DataLoader for the test set.
+        device (torch.device): Device to run the evaluation (CPU or GPU).
+        num_classes (int): Number of segmentation classes.
+        visualize (bool): Whether to visualize predictions. Default is False.
+        num_samples (int): Number of samples to visualize. Default is 5.
+
+    Returns:
+        np.ndarray: Average Dice scores for each class.
+    """
+    print("*********************Starting evaluation...*********************")
+    start_time = time.time()
+    model.eval()
+    total_dice_scores = np.zeros(num_classes)
+    num_batches = 0
+
+    with torch.no_grad():
+        for idx, (images, masks) in enumerate(tqdm(test_loader, desc="Evaluating")):
+            images, masks = images.to(device), masks.to(device)
+            outputs = model(images)
+            predictions = torch.argmax(outputs, dim=1)
+
+            # Compute Dice scores for each class
+            for cls in range(1, num_classes):  # Skip background (class 0)
+                intersection = ((predictions == cls) & (masks == cls)).sum().item()
+                union = ((predictions == cls) | (masks == cls)).sum().item()
+                dice_score = 2.0 * intersection / (union + 1e-6)
+                total_dice_scores[cls] += dice_score
+
+            num_batches += 1
+
+            # Visualize predictions if enabled
+            if visualize and idx < num_samples:
+                for i in range(min(num_samples, images.size(0))):
+                    plt.figure(figsize=(12, 4))
+                    plt.subplot(1, 3, 1)
+                    plt.imshow(images[i, 0].cpu().numpy(), cmap="gray")
+                    plt.title("Input Image")
+                    plt.axis("off")
+
+                    plt.subplot(1, 3, 2)
+                    plt.imshow(masks[i].cpu().numpy(), cmap="jet", vmin=0, vmax=num_classes - 1)
+                    plt.title("Ground Truth Mask")
+                    plt.axis("off")
+
+                    plt.subplot(1, 3, 3)
+                    plt.imshow(predictions[i].cpu().numpy(), cmap="jet", vmin=0, vmax=num_classes - 1)
+                    plt.title("Predicted Mask")
+                    plt.axis("off")
+
+                    plt.tight_layout()
+                    plt.show()
+
+    avg_dice_scores = total_dice_scores / num_batches
+    elapsed_time = time.time() - start_time
+
+    print(f"Evaluation completed in {elapsed_time:.2f} seconds.")
+    print(f"Average Dice Scores (per class): {avg_dice_scores}")
+
+    return avg_dice_scores
+
 # Predict single volume
 def predict(model, image, device):
     print("*********************Starting prediction...*********************")
@@ -350,7 +419,7 @@ if __name__ == "__main__":
     print(script_dir)
     image_dir = script_dir + '/data/segmentai_dataset/images/' + region
     mask_dir = script_dir + '/data/segmentai_dataset/multiclass_masks/' + region
-    dataset_dir = script_dir + '/data/segmentai_dataset/processed/' + region + '_processed_dataset.pth'
+    dataset_dir = script_dir + '/data/segmentai_dataset/processed/' + region + 'sss_processed_dataset.pth'
     model_save_path = script_dir + '/models/unet/' + region + '_3d_unet_model.pth'
 
     if os.path.exists(dataset_dir):
@@ -358,6 +427,8 @@ if __name__ == "__main__":
         full_dataset = torch.load(dataset_dir)
     else:
         if not os.path.exists(image_dir) or not os.path.exists(mask_dir):
+            print("Image dir: ", image_dir)
+            print("Mask dir: ", mask_dir)
             raise FileNotFoundError("Image or mask directory not found!")
             # TODO: Download the dataset from gcloud storage
             # https://console.cloud.google.com/storage/browser/segmentai_dataset
@@ -374,10 +445,15 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = UNet3D(1, 6).to(device)
 
-    # TODO: Change number of epochs more than 2 (20??)
-    train_losses, val_losses = train_model(model, train_loader, val_loader, device, epochs=20, lr=1e-3)
-    torch.save(model.state_dict(), model_save_path)
-    print(f"Model saved to {model_save_path}")
+    training = False
+    if training:
+        # TODO: Change number of epochs more than 2 (20??)
+        train_losses, val_losses = train_model(model, train_loader, val_loader, device, epochs=20, lr=1e-3)
+        torch.save(model.state_dict(), model_save_path)
+        print(f"Model saved to {model_save_path}")
 
-    evaluate_model(model, val_loader, device, 6)
-    #visualize_predictions(model, val_loader, device, 6)
+    evaluate = True
+    if evaluate:
+        '''evaluate_model(model, val_loader, device, 6)
+        visualize_predictions(model, val_loader, device, 6)'''
+        evaluate_and_visualize_model(model, val_loader, device, 6, visualize=False, num_samples=5)
