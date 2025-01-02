@@ -420,7 +420,7 @@ if __name__ == "__main__":
     image_dir = script_dir + '/data/segmentai_dataset/images/' + region
     mask_dir = script_dir + '/data/segmentai_dataset/multiclass_masks/' + region
     dataset_dir = script_dir + '/data/segmentai_dataset/processed/' + region + 'sss_processed_dataset.pth'
-    model_save_path = script_dir + '/models/unet/' + region + '_3d_unet_model.pth'
+    model_save_path = script_dir + '/models/unet/' + region + '_3d_unet_model'
 
     if os.path.exists(dataset_dir):
         print("Loading preprocessed dataset...")
@@ -449,11 +449,13 @@ if __name__ == "__main__":
     if training:
         # TODO: Change number of epochs more than 2 (20??)
         train_losses, val_losses = train_model(model, train_loader, val_loader, device, epochs=20, lr=1e-3)
-        torch.save(model.state_dict(), model_save_path)
-        print(f"Model saved to {model_save_path}")
+        torch.save(model.state_dict(), f"{model_save_path}_training.pth")
+        print(f"Model saved to {model_save_path}_training.pth")
 
     evaluate = True
     if evaluate:
         '''evaluate_model(model, val_loader, device, 6)
         visualize_predictions(model, val_loader, device, 6)'''
         evaluate_and_visualize_model(model, val_loader, device, 6, visualize=False, num_samples=5)
+        torch.save(model.state_dict(), f"{model_save_path}_evaluation.pth")
+        print(f"Model saved to {model_save_path}_training.pth")
