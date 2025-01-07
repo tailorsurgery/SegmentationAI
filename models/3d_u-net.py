@@ -8,11 +8,11 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 from torch import nn, optim
 from torch.utils.data import Dataset, DataLoader, random_split
-
+from torch.cuda.amp import autocast
 import random
 
 # Visualization function
-def visualize_patch(image_patch, mask_patch):
+def visualize_patch2(image_patch, mask_patch):
     """
     Visualize the middle slice of a 3D image and mask patch.
     """
@@ -119,6 +119,40 @@ def visualize_predictions(model, test_loader, device, num_classes, num_samples=2
     print(f"Visualization completed in {elapsed_time:.2f} seconds.")
 
 
+# Visualization function
+def visualize_patch(image_patch, mask_patch, prediction_patch, num_classes=5):
+    """
+    Visualize the middle slice of a 3D image, mask, and prediction patch.
+    """
+    # Calculate the middle slice in the z-dimension
+    z_middle = (image_patch.shape[1] // 2) + 20  # Offset for better context
+
+    # Extract the middle slice for visualization
+    image_slice = image_patch[0, z_middle, :, :]  # First channel, middle z-slice
+    mask_slice = mask_patch[z_middle, :, :]  # Middle z-slice of the mask
+    prediction_slice = prediction_patch[z_middle, :, :]  # Middle z-slice of predictions
+
+    # Plot the image, mask, and prediction side-by-side
+    plt.figure(figsize=(15, 5))
+    plt.subplot(1, 3, 1)
+    plt.imshow(image_slice, cmap="gray")
+    plt.title("Image Patch (Middle Slice)")
+    plt.axis("off")
+
+    plt.subplot(1, 3, 2)
+    plt.imshow(mask_slice, cmap="jet", vmin=0, vmax=num_classes)
+    plt.title("Ground Truth Mask (Middle Slice)")
+    plt.axis("off")
+
+    plt.subplot(1, 3, 3)
+    plt.imshow(prediction_slice, cmap="jet", vmin=0, vmax=num_classes)
+    plt.title("Predicted Mask (Middle Slice)")
+    plt.axis("off")
+
+    plt.tight_layout()
+    plt.show()
+
+
 def evaluate_and_visualize_model(
     model, test_loader, device, num_classes, visualize=False, num_samples=5
 ):
@@ -148,6 +182,8 @@ def evaluate_and_visualize_model(
             outputs = model(images)
             predictions = torch.argmax(outputs, dim=1)
 
+            print(f"Evaluating image: {idx}")
+
             # Compute Dice scores for each class
             for cls in range(1, num_classes):  # Skip background (class 0)
                 intersection = ((predictions == cls) & (masks == cls)).sum().item()
@@ -157,27 +193,39 @@ def evaluate_and_visualize_model(
 
             num_batches += 1
 
-            # Visualize predictions if enabled
+            # Visualization with error handling
             if visualize and idx < num_samples:
-                for i in range(min(num_samples, images.size(0))):
-                    plt.figure(figsize=(12, 4))
-                    plt.subplot(1, 3, 1)
-                    plt.imshow(images[i, 0].cpu().numpy(), cmap="gray")
-                    plt.title("Input Image")
-                    plt.axis("off")
+                try:
+                    for i in range(min(num_samples, images.size(0))):
+                        # Extract the middle slice for visualization
+                        z_middle = images.shape[2] // 2
+                        image_slice = images[i, 0, z_middle, :, :].cpu().numpy()
+                        mask_slice = masks[i, z_middle, :, :].cpu().numpy()
+                        prediction_slice = predictions[i, z_middle, :, :].cpu().numpy()
 
-                    plt.subplot(1, 3, 2)
-                    plt.imshow(masks[i].cpu().numpy(), cmap="jet", vmin=0, vmax=num_classes - 1)
-                    plt.title("Ground Truth Mask")
-                    plt.axis("off")
+                        # Plot and save the slices
+                        plt.figure(figsize=(12, 4))
+                        plt.subplot(1, 3, 1)
+                        plt.imshow(image_slice, cmap="gray")
+                        plt.title("Input Image")
+                        plt.axis("off")
 
-                    plt.subplot(1, 3, 3)
-                    plt.imshow(predictions[i].cpu().numpy(), cmap="jet", vmin=0, vmax=num_classes - 1)
-                    plt.title("Predicted Mask")
-                    plt.axis("off")
+                        plt.subplot(1, 3, 2)
+                        plt.imshow(mask_slice, cmap="jet", vmin=0, vmax=num_classes - 1)
+                        plt.title("Ground Truth Mask")
+                        plt.axis("off")
 
-                    plt.tight_layout()
-                    plt.show()
+                        plt.subplot(1, 3, 3)
+                        plt.imshow(prediction_slice, cmap="jet", vmin=0, vmax=num_classes - 1)
+                        plt.title("Predicted Mask")
+                        plt.axis("off")
+
+                        plt.tight_layout()
+                        plt.savefig(f"ev_vis_{idx}_{i}_{time.time()}.png")
+                        plt.close()
+                except Exception as e:
+                    print(f"Visualization error for image {idx}: {e}")
+                    continue  # Continue with the next iteration
 
     avg_dice_scores = total_dice_scores / num_batches
     elapsed_time = time.time() - start_time
@@ -264,8 +312,8 @@ class PatchBasedDataset(Dataset):
         image_patch = image_array[:, z_start:z_end, y_start:y_end, x_start:x_end]
         mask_patch = mask_array[z_start:z_end, y_start:y_end, x_start:x_end]
 
-        if self.visualize:
-            visualize_patch(image_patch, mask_patch)
+        if self.visualize == "Change":
+            visualize_patch2(image_patch, mask_patch)
 
         image_tensor = torch.tensor(image_patch, dtype=torch.float32)
         mask_tensor = torch.tensor(mask_patch, dtype=torch.int64)
@@ -432,7 +480,7 @@ if __name__ == "__main__":
             raise FileNotFoundError("Image or mask directory not found!")
             # TODO: Download the dataset from gcloud storage
             # https://console.cloud.google.com/storage/browser/segmentai_dataset
-        full_dataset = PatchBasedDataset(image_dir, mask_dir)
+        full_dataset = PatchBasedDataset(image_dir, mask_dir, visualize=False)
         torch.save(full_dataset, dataset_dir)
 
     train_size = int(0.8 * len(full_dataset))
@@ -443,16 +491,17 @@ if __name__ == "__main__":
     val_loader = DataLoader(val_dataset, batch_size=4, shuffle=False, num_workers=2, pin_memory=True)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(device)
     model = UNet3D(1, 6).to(device)
 
-    training = False
+    training = True
     if training:
         # TODO: Change number of epochs more than 2 (20??)
         train_losses, val_losses = train_model(model, train_loader, val_loader, device, epochs=20, lr=1e-3)
         torch.save(model.state_dict(), f"{model_save_path}_training.pth")
         print(f"Model saved to {model_save_path}_training.pth")
 
-    evaluate = True
+    evaluate = False
     if evaluate:
         '''evaluate_model(model, val_loader, device, 6)
         visualize_predictions(model, val_loader, device, 6)'''
