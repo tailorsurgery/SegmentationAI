@@ -2,7 +2,7 @@ ARM/FOREARM/HAND TRAINING + VALIDATION
 ______________________________________________________________________
 Each training --> aprox 52h
 Each validation --> aprox 3h
-
+TOTAL per epoch --> aprox 55h
 
 ______________________________________________________________________
 ______________________________________________________________________
@@ -13,7 +13,7 @@ Training: 100%|██████████| 3822/3822 [52:07:17<00:00, 49.09s
 Training Loss: 0.5119
 Validation: 100%|██████████| 956/956 [2:59:56<00:00, 11.29s/it]
 Validation Loss: 0.0818
-Epoch 1 completed in 198434.81 seconds.
+Epoch 1 completed in 198434.81 seconds. ~55h
 
 
 EPOCH 2
