@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 from torch import nn, optim
 from torch.utils.data import Dataset, DataLoader, random_split
-from torch.cuda.amp import autocast, GradScaler
+from torch.amp import autocast, GradScaler
 import random
 import signal
 import sys
@@ -543,12 +543,12 @@ if __name__ == "__main__":
     val_size = len(full_dataset) - train_size
     train_dataset, val_dataset = random_split(full_dataset, [train_size, val_size])
 
-    train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True, num_workers=8, pin_memory=True)
-    val_loader = DataLoader(val_dataset, batch_size=4, shuffle=False, num_workers=8, pin_memory=True)
+    train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True, num_workers=20, pin_memory=True)
+    val_loader = DataLoader(val_dataset, batch_size=4, shuffle=False, num_workers=20, pin_memory=True)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(device)
-    model = UNet3D(1, 6).to(device)
+    model = UNet3D(1, 9).to(device)
 
     # Initialize optimizer
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
@@ -562,7 +562,7 @@ if __name__ == "__main__":
         checkpoint = torch.load(interrupted_checkpoint_path, map_location=device)
         model.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        start_epoch = checkpoint.get('epoch', 0) + 1
+        start_epoch = checkpoint.get('epoch', 0)
         print(f"Resuming training from epoch {start_epoch}")
 
     # Register the signal handler
@@ -583,6 +583,6 @@ if __name__ == "__main__":
 
     training = True
     if training:
-        train_model(model, train_loader, val_loader, device, optimizer, epochs=20, lr=1e-3)
+        train_model(model, train_loader, val_loader, device, optimizer, epochs=5, lr=1e-3)
         torch.save(model.state_dict(), f"{model_save_path}_training.pth")
         print(f"Model saved to {model_save_path}_training.pth")
