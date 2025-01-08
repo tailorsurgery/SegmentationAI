@@ -201,7 +201,28 @@ def update_nrrd_class_names(nrrd_path, updated_names, output_path=None):
 
 
 
-### Example main 1 - On single case
+### Example main 1 - On single case### Example main 1 - On single case
+if __name__ == "__main__":
+    # Paths to image and masks
+    case = '240050-1' #TODO - HEREEEEEEEE
+    print(f"Processing case: {case}")
+    image_path = f'/Users/samyakarzazielbachiri/Documents/SegmentationAI/data/segmentai_dataset/images/arms/{case}_images.nrrd'
+    mask_path = f"/Users/samyakarzazielbachiri/Documents/SegmentationAI/data/segmentai_dataset/multiclass_masks/arms/{case}_multiclass_mask.nrrd"
+    # Load image and mask
+    image_array, image_spacing, _ = align_image(image_path, flip=False)
+
+    p = 1
+
+    if p == 1:
+        new_class_names = {0: "Background", 1: "Humerus_R"}
+        #sort the new_class_names
+        new_class_names = dict(sorted(new_class_names.items()))
+        update_nrrd_class_names(mask_path, new_class_names)
+
+    multiclass_mask, labels = load_multiclass_mask(mask_path)
+
+    viewer_with_colored_classes(image_array, multiclass_mask, image_spacing, labels)
+
 '''if __name__ == "__main__":
     # Paths to image and masks
     case = '240088-2' #TODO - HEREEEEEEEE
