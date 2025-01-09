@@ -5,6 +5,9 @@ import os
 from PyQt5.QtWidgets import QApplication
 
 import warnings
+
+from tornado.gen import multi
+
 warnings.filterwarnings("ignore", message="A QApplication is already running with 1 event loop.*")
 warnings.filterwarnings("ignore", message="color_dict did not provide a default color.*")
 
@@ -26,8 +29,9 @@ def load_multiclass_mask(mask_path):
     if not labels:
         print("No label_ headers found in metadata. Assigning temporary class names.")
         mask_array = sitk.GetArrayFromImage(mask)
-        #unique_classes = np.unique(mask_array)
-        labels = {int(cls): f"Class_{cls}" for cls in mask_array}
+        unique_classes = np.unique(mask_array)
+        #labels = {int(cls): f"Class_{cls}" for cls in unique_classes}
+        labels = {int(cls): f"Class_{cls}" for cls in unique_classes}
 
     print(labels)
     return sitk.GetArrayFromImage(mask), labels
@@ -204,22 +208,37 @@ def update_nrrd_class_names(nrrd_path, updated_names, output_path=None):
 ### Example main 1 - On single case### Example main 1 - On single case
 if __name__ == "__main__":
     # Paths to image and masks
-    case = '240050-1' #TODO - HEREEEEEEEE
+    case = '240093-2-2' #TODO - HEREEEEEEEE
     print(f"Processing case: {case}")
-    image_path = f'/Users/samyakarzazielbachiri/Documents/SegmentationAI/data/segmentai_dataset/images/arms/{case}_images.nrrd'
-    mask_path = f"/Users/samyakarzazielbachiri/Documents/SegmentationAI/data/segmentai_dataset/multiclass_masks/arms/{case}_multiclass_mask.nrrd"
+    # knee_copy = '-copy'
+    knee_copy = ''
+    image_path = f'/Users/samyakarzazielbachiri/Documents/SegmentationAI/data/segmentai_dataset/images/leg/knee/{case}_images.nrrd'
+    mask_path = f"/Users/samyakarzazielbachiri/Documents/SegmentationAI/data/segmentai_dataset/multiclass_masks/leg/knee{knee_copy}/{case}_multiclass_mask.nrrd"
     # Load image and mask
     image_array, image_spacing, _ = align_image(image_path, flip=False)
 
-    p = 1
+    p = 100
 
     if p == 1:
-        new_class_names = {0: "Background", 1: "Humerus_R"}
+        #new_class_names = {0: "Background", 1: "Patella_L", 2: "Patella_R", 3: "Tibia_R", 4: "Tibia_L", 5: "Fibula_L",
+        #                   6: "Femur_L", 7: "Femur_R", 8: "Fibula_R"}
+        new_class_names = {0: "Background"
+                           ,1 : "Femur_R"
+                            ,2 : "Fibula_R"
+                            ,3 : "Tibia_L"
+                            ,4 : "Femur_L"
+                            ,5 : "Patella_L"
+                            ,6 : "Patella_R"
+                            ,7 : "Fibula_L"
+                            ,8 : "Tibia_R"}
         #sort the new_class_names
         new_class_names = dict(sorted(new_class_names.items()))
         update_nrrd_class_names(mask_path, new_class_names)
 
     multiclass_mask, labels = load_multiclass_mask(mask_path)
+    # Print how many classes are in the masks array
+    print(f"Classes in the mask: {len(np.unique(multiclass_mask))}")
+
 
     viewer_with_colored_classes(image_array, multiclass_mask, image_spacing, labels)
 

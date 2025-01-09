@@ -5,6 +5,7 @@ import gc
 import numpy as np
 import SimpleITK as sitk
 import matplotlib.pyplot as plt
+from sympy import false
 from tqdm import tqdm
 from torch import nn, optim
 from torch.utils.data import Dataset, DataLoader, random_split
@@ -31,7 +32,7 @@ def visualize_patch2(image_patch, mask_patch):
     Visualize the middle slice of a 3D image and mask patch.
     """
     # Calculate the middle slice in the z-dimension
-    z_middle = (image_patch.shape[1] // 2)+20
+    z_middle = (image_patch.shape[1] // 2) + 20
 
     # Extract the middle slice for visualization
     image_slice = image_patch[0, z_middle, :, :]  # First channel, middle z-slice
@@ -65,10 +66,11 @@ def extract_patches(volume, patch_size=(128, 128, 128), stride=(64, 64, 64)):
         for y in range(0, h - ph + 1, sh):
             for x in range(0, w - pw + 1, sw):
                 patches.append((z, z+pd, y, y+ph, x, x+pw))
+
     print(f"*Volume Shape {volume.shape}")
-    print(f"*Patch Size {patch_size}")
-    print(f"*Stride {stride}")
-    print(f"*Number of Patches {len(patches)}")
+    print(f"    *Patch Size {patch_size}")
+    print(f"    *Stride {stride}")
+    print(f"    *Number of Patches {len(patches)}")
     return patches
 
 # Evaluate model performance
@@ -429,7 +431,7 @@ def train_model(model, train_loader, val_loader, device, optimizer, epochs=10, l
             images, masks = images.to(device), masks.to(device)
 
             optimizer.zero_grad()
-            with autocast():  # Enable mixed precision
+            with autocast(weights_only=False):  # Enable mixed precision
                 outputs = model(images)
                 loss = criterion(outputs, masks)
 
@@ -448,7 +450,7 @@ def train_model(model, train_loader, val_loader, device, optimizer, epochs=10, l
         with torch.no_grad():
             for images, masks in tqdm(val_loader, desc="Validation"):
                 images, masks = images.to(device), masks.to(device)
-                with autocast():
+                with autocast(device_type='cuda'):
                     outputs = model(images)
                     loss = criterion(outputs, masks)
                 val_loss += loss.item()
@@ -456,7 +458,79 @@ def train_model(model, train_loader, val_loader, device, optimizer, epochs=10, l
         val_loss /= len(val_loader)
         print(f"Validation Loss: {val_loss:.4f}")
     print(f"Training completed in {time.time() - start_time:.2f} seconds.")
-# Main
+# Register the signal handler
+def save_model_on_interrupt(signal_received, frame):
+    print("\nInterrupt received! Saving model...")
+    checkpoint = {
+        'epoch': start_epoch,
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+    }
+    checkpoint_path = f"{model_save_path}_interrupted.pth"
+    torch.save(checkpoint, checkpoint_path)
+    print(f"Model saved to {checkpoint_path}")
+    sys.exit(0)
+if __name__ == "__main__":
+    # Paths
+    region = 'knee'
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    script_dir = os.path.dirname(script_dir)
+    print(script_dir)
+    image_dir = script_dir + '/data/segmentai_dataset/images/' + region
+    mask_dir = script_dir + '/data/segmentai_dataset/multiclass_masks/' + region
+    dataset_dir = script_dir + '/data/segmentai_dataset/processed/' + region + '_processed_dataset.pth'
+    model_save_path = script_dir + '/models/unet/' + region + '_3d_unet_model'
+
+    if os.path.exists(dataset_dir):
+        print("Loading preprocessed dataset...")
+        full_dataset = torch.load(dataset_dir)
+    else:
+        if not os.path.exists(image_dir) or not os.path.exists(mask_dir):
+            print("Image dir: ", image_dir)
+            print("Mask dir: ", mask_dir)
+            raise FileNotFoundError("Image or mask directory not found!")
+        full_dataset = PatchBasedDataset(image_dir, mask_dir, visualize=False)
+        torch.save(full_dataset, dataset_dir)
+
+    train_size = int(0.8 * len(full_dataset))
+    val_size = len(full_dataset) - train_size
+    train_dataset, val_dataset = random_split(full_dataset, [train_size, val_size])
+
+    train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True, num_workers=7, pin_memory=True)
+    val_loader = DataLoader(val_dataset, batch_size=4, shuffle=False, num_workers=7, pin_memory=True)
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(device)
+    model = UNet3D(1, 9).to(device)
+
+    # Initialize optimizer
+    optimizer = optim.Adam(model.parameters(), lr=1e-3)
+
+    # Check for an interrupted checkpoint
+    interrupted_checkpoint_path = f"{model_save_path}_interrupted.pth"
+    start_epoch = 0
+
+    if os.path.exists(interrupted_checkpoint_path):
+        print(f"Found interrupted checkpoint: {interrupted_checkpoint_path}")
+        checkpoint = torch.load(interrupted_checkpoint_path, map_location=device)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        start_epoch = checkpoint.get('epoch', 0)
+        print(f"Resuming training from epoch {start_epoch}")
+
+
+
+    signal.signal(signal.SIGINT, save_model_on_interrupt)  # Handle Ctrl+C
+    signal.signal(signal.SIGTERM, save_model_on_interrupt)  # Handle kill signals
+
+    training = True
+    if training:
+        train_model(model, train_loader, val_loader, device, optimizer, epochs=5, lr=1e-3)
+        torch.save(model.state_dict(), f"{model_save_path}_training.pth")
+        print(f"Model saved to {model_save_path}_training.pth")
+
+
+# OLD Main - Save temporally
 
 '''if __name__ == "__main__":
     # Paths
@@ -516,73 +590,3 @@ def train_model(model, train_loader, val_loader, device, optimizer, epochs=10, l
         torch.save(model.state_dict(), f"{model_save_path}_evaluation.pth")
         print(f"Model saved to {model_save_path}_training.pth")
 '''
-
-if __name__ == "__main__":
-    # Paths
-    region = 'arms'
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    script_dir = os.path.dirname(script_dir)
-    print(script_dir)
-    image_dir = script_dir + '/data/segmentai_dataset/images/' + region
-    mask_dir = script_dir + '/data/segmentai_dataset/multiclass_masks/' + region
-    dataset_dir = script_dir + '/data/segmentai_dataset/processed/' + region + '_processed_dataset.pth'
-    model_save_path = script_dir + '/models/unet/' + region + '_3d_unet_model'
-
-    if os.path.exists(dataset_dir):
-        print("Loading preprocessed dataset...")
-        full_dataset = torch.load(dataset_dir)
-    else:
-        if not os.path.exists(image_dir) or not os.path.exists(mask_dir):
-            print("Image dir: ", image_dir)
-            print("Mask dir: ", mask_dir)
-            raise FileNotFoundError("Image or mask directory not found!")
-        full_dataset = PatchBasedDataset(image_dir, mask_dir, visualize=False)
-        torch.save(full_dataset, dataset_dir)
-
-    train_size = int(0.8 * len(full_dataset))
-    val_size = len(full_dataset) - train_size
-    train_dataset, val_dataset = random_split(full_dataset, [train_size, val_size])
-
-    train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True, num_workers=20, pin_memory=True)
-    val_loader = DataLoader(val_dataset, batch_size=4, shuffle=False, num_workers=20, pin_memory=True)
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(device)
-    model = UNet3D(1, 9).to(device)
-
-    # Initialize optimizer
-    optimizer = optim.Adam(model.parameters(), lr=1e-3)
-
-    # Check for an interrupted checkpoint
-    interrupted_checkpoint_path = f"{model_save_path}_interrupted.pth"
-    start_epoch = 0
-
-    if os.path.exists(interrupted_checkpoint_path):
-        print(f"Found interrupted checkpoint: {interrupted_checkpoint_path}")
-        checkpoint = torch.load(interrupted_checkpoint_path, map_location=device)
-        model.load_state_dict(checkpoint['model_state_dict'])
-        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        start_epoch = checkpoint.get('epoch', 0)
-        print(f"Resuming training from epoch {start_epoch}")
-
-    # Register the signal handler
-    def save_model_on_interrupt(signal_received, frame):
-        print("\nInterrupt received! Saving model...")
-        checkpoint = {
-            'epoch': start_epoch,
-            'model_state_dict': model.state_dict(),
-            'optimizer_state_dict': optimizer.state_dict(),
-        }
-        checkpoint_path = f"{model_save_path}_interrupted.pth"
-        torch.save(checkpoint, checkpoint_path)
-        print(f"Model saved to {checkpoint_path}")
-        sys.exit(0)
-
-    signal.signal(signal.SIGINT, save_model_on_interrupt)  # Handle Ctrl+C
-    signal.signal(signal.SIGTERM, save_model_on_interrupt)  # Handle kill signals
-
-    training = True
-    if training:
-        train_model(model, train_loader, val_loader, device, optimizer, epochs=5, lr=1e-3)
-        torch.save(model.state_dict(), f"{model_save_path}_training.pth")
-        print(f"Model saved to {model_save_path}_training.pth")
