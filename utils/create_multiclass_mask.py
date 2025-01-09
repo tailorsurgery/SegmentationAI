@@ -73,7 +73,7 @@ os.makedirs(output_dir, exist_ok=True)
 # Iterar sobre todas las imágenes en el directorio de imágenes
 #image_files = [f for f in os.listdir(image_dir) if f.endswith("_images.nrrd")]
 #print(image_files)
-image_files = ['240014-2_images.nrrd', '240014-3_images.nrrd']
+image_files = ['240014-2-2_images.nrrd', '240014-3_images.nrrd']
 time.sleep(5)
 for image_file in image_files:
     image_path = os.path.join(image_dir, image_file)
