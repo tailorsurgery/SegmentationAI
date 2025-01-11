@@ -12,6 +12,244 @@ warnings.filterwarnings("ignore", message="A QApplication is already running wit
 warnings.filterwarnings("ignore", message="color_dict did not provide a default color.*")
 
 
+def load_multiclass_mask(mask_path, label_mapping):
+    """
+    Load a multiclass mask from a file, ignoring header metadata.
+    Instead, use the numeric values in the mask array and map them
+    to class names via the provided label_mapping.
+    """
+    mask = sitk.ReadImage(mask_path)
+    mask_array = sitk.GetArrayFromImage(mask)
+
+    # Identify all unique numeric labels present in the mask data
+    unique_values = np.unique(mask_array)
+
+    # Build a dictionary that maps each numeric label to a name
+    labels = {}
+    for val in unique_values:
+        if val in label_mapping:
+            labels[val] = label_mapping[val]
+        else:
+            # If the label_mapping doesn't define this value, assign a fallback name
+            labels[val] = f"Class_{val}"
+
+    print(f"Numeric labels found in {mask_path}: {unique_values}")
+    print(f"Assigned names: {labels}")
+    return mask_array, labels
+
+
+def apply_windowing(image, window_level=40, window_width=400):
+    """
+    Apply windowing to the image using the specified window level and width.
+    """
+    min_intensity = window_level - (window_width / 2)
+    max_intensity = window_level + (window_width / 2)
+    windowed_image = sitk.IntensityWindowing(
+        image,
+        windowMinimum=min_intensity,
+        windowMaximum=max_intensity,
+        outputMinimum=0.0,
+        outputMaximum=255.0,
+    )
+    return windowed_image
+
+
+def align_image(image_path, flip=False, save=False):
+    """
+    Load the image and get its properties for visualization.
+    Applies windowing for soft tissue visualization.
+    """
+    image_raw = sitk.ReadImage(image_path)
+    # Apply windowing for soft tissue
+    image = apply_windowing(image_raw, window_level=40, window_width=400)
+
+    image_array = sitk.GetArrayFromImage(image)
+    image_spacing = image.GetSpacing()
+
+    if flip:
+        image_array = np.flip(image_array, axis=0)
+        image = sitk.GetImageFromArray(image_array)
+        image.SetSpacing(image_spacing)
+
+    if save:
+        sitk.WriteImage(image, image_path)
+
+    # We return both a NumPy spacing (for computations) and the original spacing
+    return image_array, np.array(image_spacing), image_spacing
+
+
+def create_color_map(multiclass_mask, labels):
+    """
+    Generate a unique color map for each class in the multiclass mask.
+    """
+    # Assign a random color to each label except 0, which we consider background
+    color_map = {index: np.random.rand(3,) for index in labels if index != 0}
+    color_map[0] = [1.0, 1.0, 1.0]  # Background (white)
+    return color_map
+
+
+def viewer_with_colored_classes(image_array, multiclass_mask, image_spacing, labels):
+    """
+    Create separate Napari viewers for axial, coronal, sagittal, and 3D views,
+    coloring each class by a unique color. Does not rely on any NRRD header metadata.
+    """
+    print("Loading Viewer...")
+    # Generate color map from the numeric labels to random colors
+    color_map = create_color_map(multiclass_mask, labels)
+
+    # -- Axial Viewer --
+    axial_viewer = napari.Viewer(title="Axial View")
+    axial_spacing = image_spacing[[2, 1, 0]]
+    axial_viewer.add_image(image_array, name="Axial Image", colormap="gray", scale=axial_spacing)
+
+    # -- Coronal Viewer --
+    coronal_viewer = napari.Viewer(title="Coronal View")
+    coronal_image = np.swapaxes(image_array, 0, 1)
+    coronal_image = np.flip(coronal_image, axis=(0, 1))
+    coronal_spacing = image_spacing[[1, 2, 0]]
+    coronal_viewer.add_image(coronal_image, name="Coronal Image", colormap="gray", scale=coronal_spacing)
+
+    # -- Sagittal Viewer --
+    sagittal_viewer = napari.Viewer(title="Sagittal View")
+    sagittal_image = np.swapaxes(image_array, 0, 2)
+    sagittal_image = np.rot90(sagittal_image, k=1, axes=(1, 2))
+    sagittal_spacing = image_spacing[[1, 2, 0]]
+    sagittal_viewer.add_image(sagittal_image, name="Sagittal Image", colormap="gray", scale=sagittal_spacing)
+
+    # -- 3D Viewer --
+    t3d_viewer = napari.Viewer(title="3D View", ndisplay=3)
+    # t3d_viewer.add_image(image_array, name="3D Image", colormap="gray", scale=axial_spacing, rendering='mip')
+
+    # For each numeric class (cls) in the mask, add a labels layer to each viewer
+    for cls, color in color_map.items():
+        class_mask = (multiclass_mask == cls).astype(np.uint8)
+
+        # Axial
+        axial_viewer.add_labels(
+            class_mask,
+            name=f"Class {cls}: {labels[cls]}",
+            scale=axial_spacing,
+            opacity=0.5,
+            colormap={1: color},  # Binary mask → color
+        )
+
+        # Coronal
+        coronal_mask = np.swapaxes(class_mask, 0, 1)
+        coronal_mask = np.flip(coronal_mask, axis=(0, 1))
+        coronal_viewer.add_labels(
+            coronal_mask,
+            name=f"Class {cls}: {labels[cls]}",
+            scale=coronal_spacing,
+            opacity=0.5,
+            colormap={1: color},
+        )
+
+        # Sagittal
+        sagittal_mask = np.swapaxes(class_mask, 0, 2)
+        sagittal_mask = np.rot90(sagittal_mask, k=1, axes=(1, 2))
+        sagittal_viewer.add_labels(
+            sagittal_mask,
+            name=f"Class {cls}: {labels[cls]}",
+            scale=sagittal_spacing,
+            opacity=0.5,
+            colormap={1: color},
+        )
+
+        # 3D
+        t3d_viewer.add_labels(
+            class_mask,
+            name=f"Class {cls}: {labels[cls]}",
+            scale=axial_spacing,
+            opacity=0.9,
+            colormap={1: color},
+        )
+
+    # Resize windows (example positions; adjust as desired)
+    sagittal_viewer.window._qt_window.resize(1000, 100)
+    coronal_viewer.window._qt_window.resize(1000, 100)
+    axial_viewer.window._qt_window.resize(1000, 100)
+    t3d_viewer.window._qt_window.resize(1000, 100)
+
+    # Position them on screen (arbitrary example)
+    window_width = 1920
+    window_height = 1059
+    screen_geometry = QApplication.desktop().screenGeometry()
+    screen_width = screen_geometry.width()
+    screen_height = screen_geometry.height()
+
+    x = (screen_width - window_width) // 2
+    y = (screen_height - window_height) // 2
+
+    axial_viewer.window._qt_window.move(x + 900, y)
+    sagittal_viewer.window._qt_window.move(x, y + 500)
+    coronal_viewer.window._qt_window.move(x, y)
+    t3d_viewer.window._qt_window.move(x + 900, y + 500)
+
+    # Start Napari
+    napari.run()
+
+
+def update_nrrd_class_names(nrrd_path, updated_names, output_path=None):
+    """
+    Update class names in an existing NRRD file (metadata).
+    Not used in the new logic, but kept for reference if needed.
+    """
+    mask_image = sitk.ReadImage(nrrd_path)
+    for class_value, class_name in updated_names.items():
+        mask_image.SetMetaData(f"label_{class_value}", class_name)
+    if output_path is None:
+        output_path = nrrd_path  # Overwrite the existing file
+    sitk.WriteImage(mask_image, output_path)
+    print(f"Updated NRRD saved at {output_path}")
+
+
+# --------------------- EXAMPLE MAIN ---------------------
+if __name__ == "__main__":
+    # Example: Single-case usage
+    case = '240005-2'  # Adjust to your actual case
+    region = "arms"
+    print(f"Processing case: {case}")
+
+    image_path = f'/Users/samyakarzazielbachiri/Documents/SegmentationAI/data/segmentai_dataset/images/{region}/{case}_images.nrrd'
+    mask_path = f'/Users/samyakarzazielbachiri/Documents/SegmentationAI/data/segmentai_dataset/multiclass_masks/{region}/{case}_multiclass_mask.nrrd'
+
+    # Step 1: Load image (with optional flip or save disabled for now)
+    image_array, image_spacing, _ = align_image(image_path, flip=False)
+
+    # Step 2: Define your numeric → name mapping (not from the NRRD header!)
+    label_mapping = {
+        0: "Background",
+        1: "Femur_L",
+        2: "Femur_R",
+        3: "Fibula_L",
+        4: "Fibula_R",
+        5: "Patella_L",
+        6: "Patella_R",
+        7: "Tibia_L",
+        8: "Tibia_R",
+        9: "Hand_L",
+        10: "Hand_R",
+        11: "Humerus_L",
+        12: "Humerus_R",
+        13: "Radius_L",
+        14: "Radius_R",
+        15: "Ulna_L",
+        16: "Ulna_R"
+    }
+
+    # Step 3: Load the mask array & derive labels from label_mapping (ignoring header)
+    multiclass_mask, labels = load_multiclass_mask(mask_path, label_mapping)
+
+    # Step 4: Print how many unique classes are in the mask data
+    unique_vals = np.unique(multiclass_mask)
+    print(f"Unique mask values for case {case}: {unique_vals} (Count: {len(unique_vals)})")
+
+    # Step 5: Visualize with Napari
+    viewer_with_colored_classes(image_array, multiclass_mask, image_spacing, labels)
+
+
+
+'''
 def load_multiclass_mask(mask_path):
     """
     Load a multiclass mask from a file.
@@ -113,8 +351,7 @@ def viewer_with_colored_classes(image_array, multiclass_mask, image_spacing, lab
     #t3d_viewer.add_image(image_array, name="3D Image", colormap="gray", scale=axial_spacing, rendering='mip')
 
     for cls, color in color_map.items():
-        '''if cls == 0:
-            continue'''
+        
         class_mask = (multiclass_mask == cls).astype(np.uint8)
 
         axial_viewer.add_labels(
@@ -208,12 +445,12 @@ def update_nrrd_class_names(nrrd_path, updated_names, output_path=None):
 ### Example main 1 - On single case### Example main 1 - On single case
 if __name__ == "__main__":
     # Paths to image and masks
-    case = '240093-2-2' #TODO - HEREEEEEEEE
+    case = '230090-2' #TODO - HEREEEEEEEE
     print(f"Processing case: {case}")
     # knee_copy = '-copy'
     knee_copy = ''
-    image_path = f'/Users/samyakarzazielbachiri/Documents/SegmentationAI/data/segmentai_dataset/images/leg/knee/{case}_images.nrrd'
-    mask_path = f"/Users/samyakarzazielbachiri/Documents/SegmentationAI/data/segmentai_dataset/multiclass_masks/leg/knee{knee_copy}/{case}_multiclass_mask.nrrd"
+    image_path = f'/Users/samyakarzazielbachiri/Documents/SegmentationAI/data/segmentai_dataset/images/knee/{case}_images.nrrd'
+    mask_path = f"/Users/samyakarzazielbachiri/Documents/SegmentationAI/data/segmentai_dataset/multiclass_masks/knee/{case}_multiclass_mask.nrrd"
     # Load image and mask
     image_array, image_spacing, _ = align_image(image_path, flip=False)
 
@@ -241,7 +478,7 @@ if __name__ == "__main__":
 
 
     viewer_with_colored_classes(image_array, multiclass_mask, image_spacing, labels)
-
+'''
 '''if __name__ == "__main__":
     # Paths to image and masks
     case = '240088-2' #TODO - HEREEEEEEEE

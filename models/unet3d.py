@@ -523,7 +523,7 @@ if __name__ == "__main__":
     signal.signal(signal.SIGINT, save_model_on_interrupt)  # Handle Ctrl+C
     signal.signal(signal.SIGTERM, save_model_on_interrupt)  # Handle kill signals
 
-    training = True
+    training = False
     if training:
         train_model(model, train_loader, val_loader, device, optimizer, epochs=5, lr=1e-3)
         torch.save(model.state_dict(), f"{model_save_path}_training.pth")

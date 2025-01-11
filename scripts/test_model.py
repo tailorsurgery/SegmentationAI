@@ -1,83 +1,91 @@
 import gc
 import os
 import time
-from torch.cuda.amp import autocast
-script_dir = '/Users/samyakarzazielbachiri/Documents/SegmentationAI'
-
-from models.unet3d import UNet3D
 import torch
+from torch.cuda.amp import autocast
 import SimpleITK as sitk
 import numpy as np
+from models.unet3d import UNet3D
+
+script_dir = '/Users/samyakarzazielbachiri/Documents/SegmentationAI'
+
+case = "240018-2"
+
+# Patch parameters
+PATCH_SIZE = (128, 128, 128)  # Size of each patch (depth, height, width)
+STRIDE = (64, 64, 64)  # Stride for patch extraction
 
 # Set the device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
 # Load the trained model
-model = UNet3D(1, 6).to(device)
-model_path = f"{script_dir}/models/arms-3dunet.pth"
+model = UNet3D(1, 9).to(device)  # Output channels = number of classes
+model_path = f"{script_dir}/models/unet/knee_3d_unet_model_training.pth"
 print(f"Loading model weights from: {model_path}")
 model.load_state_dict(torch.load(model_path, map_location=device))
 print("Model weights loaded successfully.")
 model.eval()
 
 # Preprocess input data
-image_path = script_dir + "/data/segmentai_dataset/images/arms/240023-2_images.nrrd"
+image_path = script_dir + f"/data/segmentai_dataset/images/knee/{case}_images.nrrd"
 print(f"Loading input image from: {image_path}")
 image = sitk.ReadImage(image_path)
 print("Image loaded successfully.")
 
-# Normalize and downsample
+# Normalize (preserve original shape)
 image_array = sitk.GetArrayFromImage(image).astype(np.float32)
 print(f"Original image shape: {image_array.shape}")
 image_array = (image_array - np.min(image_array)) / (np.max(image_array) - np.min(image_array))
 
-# Optional: Downsample
-downsample_factor = 4
-image_array = image_array[::downsample_factor, ::downsample_factor, ::downsample_factor]
+# Patch creation
+def create_patches(volume, patch_size, stride):
+    pd, ph, pw = patch_size
+    sd, sh, sw = stride
+    d, h, w = volume.shape
 
-# Ensure the shape is divisible by the required factor
-required_divisibility = 8
-new_shape = [
-    (dim // required_divisibility) * required_divisibility for dim in image_array.shape
-]
-image_array = image_array[:new_shape[0], :new_shape[1], :new_shape[2]]
-print(f"Downsampled and adjusted shape: {image_array.shape}")
+    patches = []
+    patch_indices = []
+    for z in range(0, d - pd + 1, sd):
+        for y in range(0, h - ph + 1, sh):
+            for x in range(0, w - pw + 1, sw):
+                patch = volume[z:z+pd, y:y+ph, x:x+pw]
+                patches.append(patch)
+                patch_indices.append((z, z+pd, y, y+ph, x, x+pw))
 
-input_tensor = torch.tensor(image_array).unsqueeze(0).unsqueeze(0).to(device)
-print(f"Input tensor shape: {input_tensor.shape}, dtype: {input_tensor.dtype}")
+    return np.array(patches), patch_indices
 
-# Perform inference
+patches, patch_indices = create_patches(image_array, PATCH_SIZE, STRIDE)
+print(f"Number of patches created: {len(patches)}")
+
+# Perform inference on patches
 torch.cuda.empty_cache()
 gc.collect()
 
-print("Starting inference...")
+print("Starting inference on patches...")
 start_time = time.time()
 
+# Prepare output array for binary masks
+num_classes = 9  # Number of classes
+binary_masks = [np.zeros(image_array.shape, dtype=np.uint8) for _ in range(num_classes)]
+
 with torch.no_grad():
-    output = model(input_tensor)
+    for patch, (z_start, z_end, y_start, y_end, x_start, x_end) in zip(patches, patch_indices):
+        patch_tensor = torch.tensor(patch).unsqueeze(0).unsqueeze(0).to(device)
+        with autocast():
+            output = model(patch_tensor)  # Output shape: [1, num_classes, d, h, w]
+        patch_predictions = torch.argmax(output, dim=1).squeeze(0).cpu().numpy()  # Predicted class for each voxel
 
-print(f"Inference completed in {time.time() - start_time:.2f} seconds.")
-predictions = torch.argmax(output, dim=1).squeeze(0).cpu().numpy()
+        # Update binary masks for each class
+        for cls in range(num_classes):
+            binary_masks[cls][z_start:z_end, y_start:y_end, x_start:x_end] += (patch_predictions == cls).astype(np.uint8)
 
+print(f"Inference on patches completed in {time.time() - start_time:.2f} seconds.")
 
-# Save the predictions
-predicted_image = sitk.GetImageFromArray(predictions)
-
-# Save the predictions
-output_path = f"{script_dir}/scripts/output/fist_prediction_240023-2.nrrd"
-print("Resampling prediction to match original image size...")
-
-# Resample predicted image
-resampler = sitk.ResampleImageFilter()
-resampler.SetSize(image.GetSize())
-resampler.SetOutputSpacing(image.GetSpacing())
-resampler.SetOutputOrigin(image.GetOrigin())
-resampler.SetOutputDirection(image.GetDirection())
-resampler.SetInterpolator(sitk.sitkNearestNeighbor)  # For segmentation masks
-resampled_prediction = resampler.Execute(predicted_image)
-
-# Save the resampled predicted image
-sitk.WriteImage(resampled_prediction, output_path)
-print(f"Inference complete. Resampled predictions saved to: {output_path}")
-
+# Save the binary masks as separate NRRD files
+for cls, binary_mask in enumerate(binary_masks):
+    binary_mask_image = sitk.GetImageFromArray(binary_mask)
+    binary_mask_image.CopyInformation(image)  # Ensure spatial metadata (origin, spacing) matches the input
+    output_path = f"{script_dir}/binary_mask_class_{cls}_{case}.nrrd"
+    sitk.WriteImage(binary_mask_image, output_path)
+    print(f"Class {cls} binary mask saved to: {output_path}")
