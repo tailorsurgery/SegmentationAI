@@ -419,7 +419,7 @@ class UNet3D(nn.Module):
 def train_model(model, train_loader, val_loader, device, optimizer, epochs=10, lr=1e-3):
     print("*********************Starting training...*********************")
     start_time = time.time()
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.CrossEntropyLoss(ignore_index=0)
     #optimizer = optim.Adam(model.parameters(), lr=lr)
     scaler = GradScaler()  # For mixed precision
 

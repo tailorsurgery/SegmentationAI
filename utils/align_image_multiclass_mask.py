@@ -91,36 +91,67 @@ def create_color_map(multiclass_mask, labels):
 def viewer_with_colored_classes(image_array, multiclass_mask, image_spacing, labels):
     """
     Create separate Napari viewers for axial, coronal, sagittal, and 3D views,
-    coloring each class by a unique color. Does not rely on any NRRD header metadata.
+    assuming the array is shaped (Z, Y, X) and removing extra flips/rotations.
     """
     print("Loading Viewer...")
-    # Generate color map from the numeric labels to random colors
+
+    # ---------------------------
+    # 1) Generate a color map
+    # ---------------------------
     color_map = create_color_map(multiclass_mask, labels)
 
-    # -- Axial Viewer --
+    # ---------------------------
+    # 2) Axial View
+    #    - array shape: (Z, Y, X)
+    #    - scale: (spacing_z, spacing_y, spacing_x)
+    # ---------------------------
     axial_viewer = napari.Viewer(title="Axial View")
-    axial_spacing = image_spacing[[2, 1, 0]]
-    axial_viewer.add_image(image_array, name="Axial Image", colormap="gray", scale=axial_spacing)
+    axial_scale = image_spacing[::-1]  # Reverse => (sz, sy, sx)
+    axial_viewer.add_image(
+        image_array,
+        name="Axial Image",
+        colormap="gray",
+        scale=axial_scale
+    )
 
-    # -- Coronal Viewer --
+    # ---------------------------
+    # 3) Coronal View
+    #    - swapaxes(0,1): (Z,Y,X) => (Y,Z,X)
+    #    - scale: (spacing_y, spacing_z, spacing_x)
+    # ---------------------------
     coronal_viewer = napari.Viewer(title="Coronal View")
     coronal_image = np.swapaxes(image_array, 0, 1)
-    coronal_image = np.flip(coronal_image, axis=(0, 1))
-    coronal_spacing = image_spacing[[1, 2, 0]]
-    coronal_viewer.add_image(coronal_image, name="Coronal Image", colormap="gray", scale=coronal_spacing)
+    coronal_scale = (image_spacing[1], image_spacing[2], image_spacing[0])
+    coronal_viewer.add_image(
+        coronal_image,
+        name="Coronal Image",
+        colormap="gray",
+        scale=coronal_scale
+    )
 
-    # -- Sagittal Viewer --
+    # ---------------------------
+    # 4) Sagittal View
+    #    - swapaxes(0,2): (Z,Y,X) => (X,Y,Z)
+    #    - scale: (spacing_x, spacing_y, spacing_z)
+    # ---------------------------
     sagittal_viewer = napari.Viewer(title="Sagittal View")
     sagittal_image = np.swapaxes(image_array, 0, 2)
-    sagittal_image = np.rot90(sagittal_image, k=1, axes=(1, 2))
-    sagittal_spacing = image_spacing[[1, 2, 0]]
-    sagittal_viewer.add_image(sagittal_image, name="Sagittal Image", colormap="gray", scale=sagittal_spacing)
+    sagittal_scale = (image_spacing[0], image_spacing[1], image_spacing[2])
+    sagittal_viewer.add_image(
+        sagittal_image,
+        name="Sagittal Image",
+        colormap="gray",
+        scale=sagittal_scale
+    )
 
-    # -- 3D Viewer --
+    # ---------------------------
+    # 5) 3D View
+    # ---------------------------
     t3d_viewer = napari.Viewer(title="3D View", ndisplay=3)
-    # t3d_viewer.add_image(image_array, name="3D Image", colormap="gray", scale=axial_spacing, rendering='mip')
 
-    # For each numeric class (cls) in the mask, add a labels layer to each viewer
+    # ---------------------------
+    # Add Mask Layers to Each Viewer
+    # ---------------------------
     for cls, color in color_map.items():
         class_mask = (multiclass_mask == cls).astype(np.uint8)
 
@@ -128,49 +159,49 @@ def viewer_with_colored_classes(image_array, multiclass_mask, image_spacing, lab
         axial_viewer.add_labels(
             class_mask,
             name=f"Class {cls}: {labels[cls]}",
-            scale=axial_spacing,
-            opacity=0.5,
-            colormap={1: color},  # Binary mask → color
+            scale=axial_scale,
+            colormap={1: color},
+            opacity=0.3
         )
 
         # Coronal
         coronal_mask = np.swapaxes(class_mask, 0, 1)
-        coronal_mask = np.flip(coronal_mask, axis=(0, 1))
         coronal_viewer.add_labels(
             coronal_mask,
             name=f"Class {cls}: {labels[cls]}",
-            scale=coronal_spacing,
-            opacity=0.5,
+            scale=coronal_scale,
             colormap={1: color},
+            opacity=0.5
         )
 
         # Sagittal
         sagittal_mask = np.swapaxes(class_mask, 0, 2)
-        sagittal_mask = np.rot90(sagittal_mask, k=1, axes=(1, 2))
         sagittal_viewer.add_labels(
             sagittal_mask,
             name=f"Class {cls}: {labels[cls]}",
-            scale=sagittal_spacing,
-            opacity=0.5,
+            scale=sagittal_scale,
             colormap={1: color},
+            opacity=0.5
         )
 
         # 3D
         t3d_viewer.add_labels(
             class_mask,
             name=f"Class {cls}: {labels[cls]}",
-            scale=axial_spacing,
-            opacity=0.9,
+            scale=axial_scale,
             colormap={1: color},
+            opacity=0.9
         )
 
-    # Resize windows (example positions; adjust as desired)
+    # ---------------------------
+    # (Optional) Resize Windows
+    # ---------------------------
     sagittal_viewer.window._qt_window.resize(1000, 100)
     coronal_viewer.window._qt_window.resize(1000, 100)
     axial_viewer.window._qt_window.resize(1000, 100)
     t3d_viewer.window._qt_window.resize(1000, 100)
 
-    # Position them on screen (arbitrary example)
+    # (Optional) Positioning
     window_width = 1920
     window_height = 1059
     screen_geometry = QApplication.desktop().screenGeometry()
@@ -185,10 +216,38 @@ def viewer_with_colored_classes(image_array, multiclass_mask, image_spacing, lab
     coronal_viewer.window._qt_window.move(x, y)
     t3d_viewer.window._qt_window.move(x + 900, y + 500)
 
-    # Start Napari
     napari.run()
+def viewer_with_background(image_array, multiclass_mask, image_spacing):
+    """
+    Visualize only the background mask (value = 0) along with the image in Napari.
+    """
+    print("Loading Viewer for Background...")
 
+    # Create a Napari viewer
+    viewer = napari.Viewer(title="Background Mask Viewer")
 
+    # Add the original image
+    viewer.add_image(
+        image_array,
+        name="Image",
+        colormap="gray",
+        scale=image_spacing[::-1],  # Reverse the spacing order for (Z, Y, X)
+    )
+
+    # Extract the background mask (value = 0)
+    background_mask = (multiclass_mask == 0).astype(np.uint8)
+
+    # Add the background mask
+    viewer.add_labels(
+        background_mask,
+        name="Background Mask",
+        scale=image_spacing[::-1],
+        opacity=0.5,  # Optional: Adjust opacity
+        colormap={1: [1.0, 1.0, 1.0]},  # White color for the background
+    )
+
+    # Run the viewer
+    napari.run()
 def update_nrrd_class_names(nrrd_path, updated_names, output_path=None):
     """
     Update class names in an existing NRRD file (metadata).
@@ -206,17 +265,23 @@ def update_nrrd_class_names(nrrd_path, updated_names, output_path=None):
 # --------------------- EXAMPLE MAIN ---------------------
 if __name__ == "__main__":
     # Example: Single-case usage
-    case = '240005-2'  # Adjust to your actual case
+    case = "240042-1"
+    #case = "240025-2"
     region = "arms"
     print(f"Processing case: {case}")
 
     image_path = f'/Users/samyakarzazielbachiri/Documents/SegmentationAI/data/segmentai_dataset/images/{region}/{case}_images.nrrd'
-    mask_path = f'/Users/samyakarzazielbachiri/Documents/SegmentationAI/data/segmentai_dataset/multiclass_masks/{region}/{case}_multiclass_mask.nrrd'
-
+    mask_path = f'/Users/samyakarzazielbachiri/Downloads/{case}_predicted_binary_mask_epoch5.nrrd'
+    #mask_path = f'/Users/samyakarzazielbachiri/Documents/SegmentationAI/data/segmentai_dataset/multiclass_masks/arms/{case}_multiclass_mask.nrrd'
     # Step 1: Load image (with optional flip or save disabled for now)
     image_array, image_spacing, _ = align_image(image_path, flip=False)
+    #image_array, image_spacing, _ = align_image(image_path, flip=True, save=True)
 
     # Step 2: Define your numeric → name mapping (not from the NRRD header!)
+    label_mapping2 = {
+        0: "Background",
+        1: "Bones"}
+
     label_mapping = {
         0: "Background",
         1: "Femur_L",
@@ -238,7 +303,7 @@ if __name__ == "__main__":
     }
 
     # Step 3: Load the mask array & derive labels from label_mapping (ignoring header)
-    multiclass_mask, labels = load_multiclass_mask(mask_path, label_mapping)
+    multiclass_mask, labels = load_multiclass_mask(mask_path, label_mapping2)
 
     # Step 4: Print how many unique classes are in the mask data
     unique_vals = np.unique(multiclass_mask)
@@ -246,11 +311,11 @@ if __name__ == "__main__":
 
     # Step 5: Visualize with Napari
     viewer_with_colored_classes(image_array, multiclass_mask, image_spacing, labels)
-
+    #viewer_with_background(image_array, multiclass_mask, image_spacing)
 
 
 '''
-def load_multiclass_mask(mask_path):
+def load_multiclass_mask(mask_path): 
     """
     Load a multiclass mask from a file.
     """

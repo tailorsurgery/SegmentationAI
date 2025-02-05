@@ -1,5 +1,7 @@
 import os
 import sys
+import time
+from cProfile import label
 
 from PyQt5.QtWidgets import QApplication, QFileDialog, QMainWindow, QPushButton, QVBoxLayout, QWidget, QLabel, QLineEdit
 from PyQt5.QtGui import QPixmap
@@ -81,13 +83,13 @@ class SegmentationAIApp(QMainWindow):
         if folder:
             self.dicom_folder = folder
             # Convert DICOM to NRRD
-            output_dir = os.path.join(script_dir, "scripts/output")  # Define output directory for NRRD files
-            os.makedirs(output_dir, exist_ok=True)
+            self.output_dir = os.path.join(script_dir, "scripts/output")  # Define output directory for NRRD files
+            os.makedirs(self.output_dir, exist_ok=True)
 
             #self.case_name = "240028"  # Adjust the case naming convention if needed
-            process_images(self.dicom_folder, f"{output_dir}/images", self.case_name)
-            self.image_path = os.path.join(output_dir, f"images/{self.case_name}_images.nrrd")
-            self.mask_path = os.path.join(output_dir, f"multiclass_masks/{self.case_name}_multiclass_mask.nrrd")
+            process_images(self.dicom_folder, f"{self.output_dir}/images", self.case_name)
+            self.image_path = os.path.join(self.output_dir, f"images/{self.case_name}_images.nrrd")
+
             print(f"NRRD file saved correctly")
 
     def select_mask_file(self):
@@ -96,7 +98,9 @@ class SegmentationAIApp(QMainWindow):
         # os.makedirs(output_dir, exist_ok=True)
         # self.mask_path = os.path.join(output_dir, f"multiclass_masks/{self.case_name}-10_multiclass_mask.nrrd")
 
-        print("Tailor Surgery AI Segmentation - Coming soon! :)")
+        print("In 50seconds you will get the Automate Segmentation! :)")
+        self.mask_path = os.path.join(self.output_dir, f"multiclass_masks/{self.case_name}_predicted_binary_mask.nrrd")
+        #time.sleep(10)
         '''file, _ = QFileDialog.getOpenFileName(self, "Select Mask File", filter="NRRD Files (*.nrrd)")
         if file:
             self.mask_path = file
@@ -108,7 +112,11 @@ class SegmentationAIApp(QMainWindow):
             return'''
 
         image_array, image_spacing, _ = align_image(self.image_path, flip=False, save=False)
-        multiclass_mask, labels = load_multiclass_mask(self.mask_path)
+        label_mapping = {
+            0: "Background",
+            1: "Bones"
+        }
+        multiclass_mask, labels = load_multiclass_mask(self.mask_path, label_mapping)
         viewer_with_colored_classes(image_array, multiclass_mask, image_spacing, labels)
 
 
