@@ -61,28 +61,30 @@ Digital surgery has made a remarkable impact on the medical field by enabling hi
 
 1.	Clone the Repository
 	```bash
-	git clone https://github.com/yourusername/digital-surgery-3dunet.git
-	cd digital-surgery-3dunet
+	git clone https://github.com/tailorsurgery/SegmentationAI.git
+	cd SegmentationAI
 	```
 2.	Set Up the Environment
 	```bash
 	pip install -r requirements.txt
 	```
-3.	Run the GUI
+3.	Run the model for training
 	 ```bash
-	python main_gui.py
+	python models/unet3d.ipynb
+	```
+
+4.	Run the GUI
+	 ```bash
+	python scripts/test_model.py
 	```
 	- Select the DICOM directory when prompted.
 	- Review and convert the files to NRRD.
 	- Press “Segment” to run 3D U-Net on the chosen images.
 
-4.	Check Results
+5.	Check Results
 	- Examine segmentation masks and 3D reconstructions in napari.</li>
 
 <h3>References</h3>
-
-1.	Ö. Çiçek et al., “3D U-Net: Learning Dense Volumetric Segmentation from Sparse Annotation,” arXiv preprint arXiv:1606.06650, 2016.
-2.	A. Kirillov et al., “Segment Anything,” arXiv preprint arXiv:2304.02643, 2023.
 
 <h3>Contact</h3>
 
