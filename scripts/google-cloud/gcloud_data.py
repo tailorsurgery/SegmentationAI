@@ -41,14 +41,14 @@ if __name__ == "__main__":
     # GCS bucket and prefix information
     BUCKET_NAME = "segmentai_dataset"
     IMAGE_PREFIX = "images/"
-    MASK_PREFIX = "masks/"
+    MASK_PREFIX = "multiclass_masks/"
 
     # Get current working directory
-    path = "/Users/samyakarzazielbachiri/Documents/SegmentationAI/data/"
+    path = "C:/Users/Laura Montserrat/Documents/Samya/SegmentationAI/data/"
 
     # Local directories for saving the data
     LOCAL_IMAGE_DIR = os.path.join(path, "segmentai_dataset/images")
-    LOCAL_MASK_DIR = os.path.join(path, "segmentai_dataset/masks")
+    LOCAL_MASK_DIR = os.path.join(path, "segmentai_dataset/multiclass_masks")
 
     print(f"Local image directory: {LOCAL_IMAGE_DIR}")
     print(f"Local mask directory: {LOCAL_MASK_DIR}")

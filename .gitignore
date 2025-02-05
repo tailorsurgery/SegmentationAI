@@ -162,3 +162,10 @@ cython_debug/
 #.idea/
 .DS_Store
 *.nrrd
+/scripts/input
+.DS_Store
+data/models/unet3d.pth
+.DS_Store
+.idea/misc.xml
+/.idea
+.idea/misc.xml
