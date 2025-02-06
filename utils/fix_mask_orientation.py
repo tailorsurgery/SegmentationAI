@@ -12,13 +12,6 @@ def swap_xz_axes_in_mask(input_mask_path, output_mask_path):
     # Read the original mask
     mask_image = sitk.ReadImage(input_mask_path)
 
-    # PermuteAxesImageFilter expects an order array specifying the new dimension order.
-    # SimpleITK uses (z, y, x) indexing if you do sitk.GetArrayFromImage().
-    # So if your mask is shaped [z, y, x], the indexing here is:
-    #   0 -> z axis
-    #   1 -> y axis
-    #   2 -> x axis
-    # To swap x and z, set order from [0,1,2] to [2,1,0].
     permute_filter = sitk.PermuteAxesImageFilter()
     permute_filter.SetOrder([2, 1, 0])
 

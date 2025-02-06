@@ -87,7 +87,6 @@ print(f"Inference on patches completed in {time.time() - start_time:.2f} seconds
 
 # Convert to SimpleITK image
 mask_image = sitk.GetImageFromArray(multi_class_mask)
-# Copy spatial info (origin, spacing, direction) from original image
 mask_image.CopyInformation(image)
 
 # Save as a single multi-class NRRD

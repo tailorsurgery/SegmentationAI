@@ -7,13 +7,13 @@ from PyQt5.QtWidgets import QApplication, QFileDialog, QMainWindow, QPushButton,
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtCore import Qt
 
-# Add the directory containing dicom2nrrd.py to the system path
+
 script_dir = os.path.dirname(os.path.abspath(__file__))
-utils_dir = os.path.join(script_dir, "utils")  # Assuming dicom2nrrd.py is in a 'utils' folder
+utils_dir = os.path.join(script_dir, "utils")
 if utils_dir not in sys.path:
     sys.path.append(utils_dir)
 
-from utils.dicom2nrrd import process_images  # Adjust the import to match the function in dicom2nrrd.py
+from utils.dicom2nrrd import process_images
 from utils.align_image_multiclass_mask import align_image, load_multiclass_mask, viewer_with_colored_classes
 
 import warnings
@@ -83,10 +83,10 @@ class SegmentationAIApp(QMainWindow):
         if folder:
             self.dicom_folder = folder
             # Convert DICOM to NRRD
-            self.output_dir = os.path.join(script_dir, "scripts/output")  # Define output directory for NRRD files
+            self.output_dir = os.path.join(script_dir, "scripts/output")
             os.makedirs(self.output_dir, exist_ok=True)
 
-            #self.case_name = "240028"  # Adjust the case naming convention if needed
+            #self.case_name = "240028"
             process_images(self.dicom_folder, f"{self.output_dir}/images", self.case_name)
             self.image_path = os.path.join(self.output_dir, f"images/{self.case_name}_images.nrrd")
 

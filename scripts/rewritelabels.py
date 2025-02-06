@@ -216,15 +216,6 @@ def binarize_labels_in_nrrd(nrrd_folder):
                 # background (0) stays 0, and everything else becomes 1
                 new_data = np.where(data == 0, 0, 1)
 
-                # Optionally, adjust or clear label_x entries in the header if needed
-                # e.g., removing them altogether:
-                # for k in list(header.keys()):
-                #     if k.startswith('label_'):
-                #         del header[k]
-                #
-                # Or updating them:
-                # header['label_0'] = 'Background'
-                # header['label_1'] = 'Foreground'
 
                 # Save the updated array back to disk
                 nrrd.write(file_path, new_data, header)
