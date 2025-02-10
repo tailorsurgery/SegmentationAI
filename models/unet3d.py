@@ -589,3 +589,4 @@ if __name__ == "__main__":
         torch.save(model.state_dict(), f"{model_save_path}_evaluation.pth")
         print(f"Model saved to {model_save_path}_training.pth")
 '''
+https://debuggercafe.com/unet-from-scratch-using-pytorch/
